@@ -273,7 +273,9 @@ agent 可达面，必须：
   再投影为 `category: "mode"` 的 `mode` select，把 `ctx.permissionPresets` 投影为
   `category: "_permission"` 的 `permission` select；两者都走原有的
   `session/set_mode` / `permissionPresets.set` 路径，不新增权限语义。未挂载 plan-mode
-  或 permission-presets 时对应 option 完全省略。
+  或 permission-presets 时对应 option 完全省略。完整 option 数组按 Zed 工具栏顺序
+  `permission → mode → reasoning_effort → model` 返回；模型变更时也返回完整数组，
+  避免客户端在切换模型后丢掉其他选择器。
 - 三块都是纯增量：没有 deployment gate（commands/modes 客户端会忽略不认识的 update；
   elicitation 由客户端能力门控），与原生 parity 场景无交集。
 

@@ -29,11 +29,24 @@ import {
   PLAN_MODE_ID,
   setSessionMode,
 } from './modes.ts'
+import { MODEL_CONFIG_ID, REASONING_CONFIG_ID } from '../model-control.ts'
 
 /** Config-option id for the default/plan selector. */
 export const SESSION_MODE_CONFIG_ID = 'mode'
 /** Config-option id for the permission-preset selector. */
 export const PERMISSION_CONFIG_ID = 'permission'
+
+/**
+ * Config-option display order for the Zed toolbar: permission, plan,
+ * reasoning effort, then model. ACP treats option order as UX, so clients may
+ * render another order; this one keeps the high-level controls first.
+ */
+const CONFIG_OPTION_ORDER: readonly string[] = [
+  PERMISSION_CONFIG_ID,
+  SESSION_MODE_CONFIG_ID,
+  REASONING_CONFIG_ID,
+  MODEL_CONFIG_ID,
+]
 
 /** Reserved permission-preset identity for settings that match no preset. */
 const CUSTOM_PRESET = 'custom'
@@ -133,6 +146,20 @@ export function permissionConfigOption(ctx: Context, session: Session): SessionC
   } catch (_unavailablePermissionState) {
     return undefined
   }
+}
+
+/**
+ * Order a complete option state for the Zed toolbar.
+ * @param options - model and session options in registration order.
+ * @returns a new array in display order; unknown ids keep their relative order.
+ */
+export function orderConfigOptions(
+  options: readonly SessionConfigOption[],
+): SessionConfigOption[] {
+  const rank = new Map(CONFIG_OPTION_ORDER.map((id, index) => [id, index]))
+  return [...options].sort((left, right) =>
+    (rank.get(left.id) ?? CONFIG_OPTION_ORDER.length)
+    - (rank.get(right.id) ?? CONFIG_OPTION_ORDER.length))
 }
 
 /**

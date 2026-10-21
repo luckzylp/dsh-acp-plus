@@ -148,9 +148,10 @@ server settings (`zed: open server settings`, i.e. the remote
 `sh -lc` picks up the login shell's PATH; an absolute `dsh` path works too.
 Reconnect the remote project and select `dsh-acp-plus` in the agent picker.
 The agent panel shows **Model**, **Reasoning effort**, **Mode**, and
-**Permission** when the corresponding services are mounted. `Mode` drives the
-same plan state as `session/set_mode`, and `Permission` drives the same preset
-as the `/permission` command. Slash commands, `session/load` replay, and
+**Permission** when the corresponding services are mounted. The bridge returns
+them in the toolbar order **Permission → Mode → Reasoning effort → Model**.
+`Mode` drives the same plan state as `session/set_mode`, and `Permission`
+drives the same preset as the `/permission` command. Slash commands, `session/load` replay, and
 `ask_user_question` (when the client declares form elicitation) are available;
 client terminals are intentionally unsupported. Logs:
 `~/.local/share/zed/logs/server-preview-*.log`.

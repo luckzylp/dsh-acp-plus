@@ -134,3 +134,32 @@ test('shows the derived custom permission value without inventing a switch targe
     await harness.dispose()
   }
 })
+test('orders model, reasoning, mode, and permission for the Zed toolbar', async () => {
+  const harness = await makeBridgeHarness({ planMode: true, permissionPresets: true })
+  try {
+    await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const created = await harness.client.newSession({ cwd: CWD, mcpServers: [] })
+    const expected = ['permission', 'mode', 'reasoning_effort', 'model']
+    assert.deepEqual(created.configOptions?.map(option => option.id), expected)
+
+    // A model mutation must return the complete ordered state, not only model
+    // options; otherwise Zed drops the other selectors after a model switch.
+    const model = selectOption(created.configOptions, 'model')
+    assert.ok(model)
+    const updated = await harness.client.setSessionConfigOption({
+      sessionId: created.sessionId,
+      configId: 'model',
+      value: model.currentValue,
+    })
+    assert.deepEqual(updated.configOptions.map(option => option.id), expected)
+
+    const plan = await harness.client.setSessionConfigOption({
+      sessionId: created.sessionId,
+      configId: 'mode',
+      value: PLAN_MODE_ID,
+    })
+    assert.deepEqual(plan.configOptions.map(option => option.id), expected)
+  } finally {
+    await harness.dispose()
+  }
+})

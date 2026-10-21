@@ -41,6 +41,7 @@ import {
 import { DEFAULT_MODE_ID, PLAN_MODE_ID, sessionModeState, setSessionMode } from './features/modes.ts'
 import {
   AcpPlusSessionOptionError,
+  orderConfigOptions,
   sessionConfigOptions,
   setSessionConfigOption,
 } from './features/session-options.ts'
@@ -298,7 +299,7 @@ export class AcpPlusSession {
   async configOptions(signal?: AbortSignal): Promise<SessionConfigOption[]> {
     this.assertActive()
     const modelOptions = await this.modelControl.options(signal)
-    return [...modelOptions, ...sessionConfigOptions(this.ctx, this.agent)]
+    return orderConfigOptions([...modelOptions, ...sessionConfigOptions(this.ctx, this.agent)])
   }
 
   /**
@@ -312,7 +313,8 @@ export class AcpPlusSession {
     this.assertActive()
     if (typeof value !== 'string') throw new AcpPlusSessionOptionError(`${configId} requires a select value`)
     if (setSessionConfigOption(this.ctx, this.agent, configId, value)) return this.configOptions(signal)
-    return this.modelControl.set(configId, value, signal)
+    await this.modelControl.set(configId, value, signal)
+    return this.configOptions(signal)
   }
 
   /** Publish the current command list to this session's client. */

@@ -19,8 +19,8 @@ import type { SessionConfigOption, SessionConfigValueId } from '@agentclientprot
 import { installModelSelection, type ModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId, type LlmCallConfig, type LlmRuntime } from '@deepseek-ai/dsh-llm'
 
-const MODEL_CONFIG_ID = 'model'
-const REASONING_CONFIG_ID = 'reasoning_effort'
+export const MODEL_CONFIG_ID = 'model'
+export const REASONING_CONFIG_ID = 'reasoning_effort'
 /** Disjoint opaque value for "let the provider pick", since effort ids are non-empty. */
 const PROVIDER_DEFAULT_REASONING_VALUE = ''
 

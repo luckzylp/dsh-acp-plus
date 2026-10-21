@@ -65,6 +65,16 @@ function normalize(updates: readonly CapturedUpdate[]): unknown[] {
   })
 }
 
+/** Compare config options by id, not by client-specific display order. */
+function normalizeConfigOptions(value: unknown): unknown {
+  if (!Array.isArray(value)) return value
+  return [...value].sort((left, right) => {
+    const leftId = String((left as { id?: unknown }).id ?? '')
+    const rightId = String((right as { id?: unknown }).id ?? '')
+    return leftId.localeCompare(rightId)
+  })
+}
+
 /** Drive one bridge through a scenario and collect its normalized output. */
 async function run(
   bridge: 'ext' | 'native',
@@ -75,7 +85,10 @@ async function run(
   try {
     await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
     const outcome = await drive(harness)
-    return { updates: normalize(harness.updates), outcome }
+    return {
+      updates: normalize(harness.updates),
+      outcome: { ...outcome, configOptions: normalizeConfigOptions(outcome.configOptions) },
+    }
   } finally {
     await harness.dispose()
   }
