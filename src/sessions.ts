@@ -26,7 +26,7 @@ import { createUserMessage, errorChain, type UserMessage } from '@deepseek-ai/ds
 import { type Session, type SessionEvent, type SessionId, type TurnEndReason } from '@deepseek-ai/dsh-session'
 import { AcpPlusContentError, admitAcpPrompt } from './content.ts'
 import { turnEndToStopReason } from './codec.ts'
-import { preApprovedEscalation, registerAdditionalDirectoriesContext } from './features/additional-directories.ts'
+import { preApprovedEscalation } from './features/additional-directories.ts'
 import {
   availableCommands,
   commandDoneUpdate,
@@ -35,6 +35,12 @@ import {
   promptCommandLine,
 } from './features/commands.ts'
 import { DEFAULT_MODE_ID, PLAN_MODE_ID, sessionModeState, setSessionMode } from './features/modes.ts'
+import {
+  expandWorkspacePath,
+  registerWorkspaceRoots,
+  type WorkspacePromptMode,
+  type WorkspaceRoot,
+} from './features/workspace-roots.ts'
 import { mountAcpMcpServers } from './mcp.ts'
 import { AcpPlusModelControl } from './model-control.ts'
 import { assistantUpdates, toolCallUpdate, toolResultUpdate } from './updates.ts'
@@ -53,6 +59,8 @@ interface AcpPlusSessionBuildOptions {
   mcpServers: readonly McpServer[]
   /** Authorized additional workspace roots from the lifecycle request. */
   additionalDirectories: readonly string[]
+  /** How the declared roots are described and routed to the model. */
+  workspacePrompt: WorkspacePromptMode
   /** Per-agent route options from deployment config. */
   agentOptions: AgentOptions
   /** Deployment provider/model selection, or undefined when a listener supplies it. */
@@ -149,17 +157,21 @@ export class AcpPlusSession {
   private readonly toolCalls = new Map<string, { name: string; arguments: unknown }>()
   /** Client-declared additional workspace roots, canonical and deduplicated. */
   private readonly additionalDirectories: readonly string[]
+  /** Alias-to-root mapping used for prompt routing and approval containment. */
+  private readonly workspaceRoots: readonly WorkspaceRoot[]
 
   private constructor(
     private readonly ctx: Context,
     handle: AgentHandle,
     modelControl: AcpPlusModelControl,
     additionalDirectories: readonly string[],
+    workspaceRoots: readonly WorkspaceRoot[],
     private readonly notify: (notification: SessionNotification) => Promise<void>,
   ) {
     this.agent = handle.agent
     this.modelControl = modelControl
     this.additionalDirectories = additionalDirectories
+    this.workspaceRoots = workspaceRoots
     this.disposeAgent = () => handle.dispose()
   }
 
@@ -173,20 +185,35 @@ export class AcpPlusSession {
    */
   static async create(ctx: Context, options: CreateAcpPlusSessionOptions): Promise<AcpPlusSession> {
     const modelControl = new AcpPlusModelControl(ctx.llm, options.fallbackSelection)
+    let workspaceRoots: readonly WorkspaceRoot[] = []
     const handle = await ctx.agents.create({
       sessionId: options.sessionId,
       meta: { cwd: options.cwd },
       agentOptions: options.agentOptions,
       signal: options.signal,
-      setup: async (agentCtx) => {
+      setup: async (agentCtx, agent) => {
         modelControl.install(agentCtx)
         // The declaration is a session-level grant; the sandbox stays at its
         // standing mode and reach is realized per call through escalation.
-        registerAdditionalDirectoriesContext(agentCtx, options.additionalDirectories)
+        // The prompt layer only describes the grant and routes aliases; it
+        // never widens what the sandbox will accept.
+        workspaceRoots = registerWorkspaceRoots(
+          agentCtx,
+          agent,
+          options.additionalDirectories,
+          options.workspacePrompt,
+        )
         await mountAcpMcpServers(agentCtx, options.mcpServers, options.cwd)
       },
     })
-    return new AcpPlusSession(ctx, handle, modelControl, options.additionalDirectories, options.notify)
+    return new AcpPlusSession(
+      ctx,
+      handle,
+      modelControl,
+      options.additionalDirectories,
+      workspaceRoots,
+      options.notify,
+    )
   }
 
   /**
@@ -197,6 +224,7 @@ export class AcpPlusSession {
    */
   static async resume(ctx: Context, options: ResumeAcpPlusSessionOptions): Promise<AcpPlusSession> {
     let modelControl: AcpPlusModelControl | undefined
+    let workspaceRoots: readonly WorkspaceRoot[] = []
     const handle = await ctx.agents.resume({
       resumeSessionId: options.sessionId,
       agentOptions: options.agentOptions,
@@ -207,7 +235,12 @@ export class AcpPlusSession {
           selectionFor(agent.session.requestHeader(), options.fallbackSelection),
         )
         modelControl.install(agentCtx)
-        registerAdditionalDirectoriesContext(agentCtx, options.additionalDirectories)
+        workspaceRoots = registerWorkspaceRoots(
+          agentCtx,
+          agent,
+          options.additionalDirectories,
+          options.workspacePrompt,
+        )
         await mountAcpMcpServers(agentCtx, options.mcpServers, options.cwd)
       },
     })
@@ -215,7 +248,14 @@ export class AcpPlusSession {
       await handle.dispose()
       throw internalError('session/resume did not compose model selection')
     }
-    return new AcpPlusSession(ctx, handle, modelControl, options.additionalDirectories, options.notify)
+    return new AcpPlusSession(
+      ctx,
+      handle,
+      modelControl,
+      options.additionalDirectories,
+      workspaceRoots,
+      options.notify,
+    )
   }
 
   /**
@@ -538,12 +578,17 @@ export class AcpPlusSession {
     const call = this.toolCalls.get(callId)
     if (call === undefined || call.name !== toolName) return Promise.resolve(false)
     const filePath = (call.arguments as { file_path?: unknown } | null | undefined)?.file_path
+    // The logged call keeps the model's `@alias/` spelling while the tool body
+    // runs against the expanded path; containment must use the same expansion.
+    const expanded = typeof filePath === 'string'
+      ? expandWorkspacePath(filePath, this.workspaceRoots)
+      : undefined
     return preApprovedEscalation(
       this.ctx,
       this.agent.session,
       this.additionalDirectories,
       toolName,
-      typeof filePath === 'string' ? filePath : undefined,
+      expanded,
     )
   }
 

@@ -31,6 +31,12 @@ export interface AcpPlusConfig {
    * the client.
    */
   enableAdditionalDirectories?: boolean
+  /**
+   * How declared roots are described to the model. `routing` adds the root
+   * map and a working `@alias/` prefix; `map` only lists roots and leaves
+   * path handling to absolute paths; `off` injects nothing.
+   */
+  additionalDirectoriesPrompt?: 'routing' | 'map' | 'off'
 }
 
 /** Schemastery schema validating the fields above. */
@@ -43,6 +49,8 @@ export const Config: Schema<AcpPlusConfig> = Schema.object({
     .description('Advertise and serve session/load: replay the persisted transcript after reopening.'),
   enableAdditionalDirectories: Schema.boolean().default(false)
     .description('Accept additionalDirectories; verified single-target writes under a declared root are pre-approved.'),
+  additionalDirectoriesPrompt: Schema.union(['routing', 'map', 'off'] as const).default('routing')
+    .description('Describe declared roots in the system prompt: routing adds @alias/ path routing, map lists roots only, off injects nothing.'),
 })
 
 /** Resolved configuration consumed by the bridge. */
@@ -61,6 +69,7 @@ export interface AcpPlusSpec {
   features: {
     sessionLoad: boolean
     additionalDirectories: boolean
+    additionalDirectoriesPrompt: 'routing' | 'map' | 'off'
   }
 }
 
@@ -82,6 +91,7 @@ export function resolveSpec(config: AcpPlusConfig): AcpPlusSpec {
     features: {
       sessionLoad: config.enableSessionLoad ?? false,
       additionalDirectories: config.enableAdditionalDirectories ?? false,
+      additionalDirectoriesPrompt: config.additionalDirectoriesPrompt ?? 'routing',
     },
   }
 }

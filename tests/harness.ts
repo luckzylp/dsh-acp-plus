@@ -56,11 +56,12 @@ import * as ToolAskUser from '@deepseek-ai/dsh-tool-ask-user'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistenceModule from '@deepseek-ai/dsh-session-persistence-jsonl'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
+import WorkingDirectoryService from '@deepseek-ai/dsh-working-directory'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import * as AcpPlugin from '../src/index.ts'
 import type { AcpPlusConfig } from '../src/index.ts'
@@ -135,6 +136,10 @@ export class MockAdapter extends LlmAdapter {
     }
   }
 }
+
+/** Accept both the named-export plugin shape and an older default export. */
+const JsonlSessionPersistence = (JsonlSessionPersistenceModule as { default?: unknown }).default
+  ?? JsonlSessionPersistenceModule
 
 const IMAGE_LIMITS: ImageAttachmentLimits = {
   maxImageBytes: 1024,
@@ -305,7 +310,10 @@ export async function makeBridgeHarness(options: {
       model: options.defaultModel.model,
     })
   }
-  await ctx.plugin(JsonlSessionPersistence, { root: persistenceRoot, compression: 'none' })
+  await ctx.plugin(JsonlSessionPersistence as Parameters<Context['plugin']>[0], {
+    root: persistenceRoot,
+    compression: 'none',
+  })
   if (options.workspaces === true || options.workspaceStorage === true) {
     await ctx.plugin(Storage)
     await ctx.plugin(StorageJson as unknown as Parameters<Context['plugin']>[0], { root: join(persistenceRoot, 'storages') })
@@ -319,6 +327,9 @@ export async function makeBridgeHarness(options: {
     await ctx.plugin(SandboxPolicyService, { mode: options.sandboxMode, workspaceRoot: process.cwd() })
   }
   if (options.filesystemTools === true) {
+    // `tool-fs` resolves relative paths through the working-directory service;
+    // a composition that mounts it without this service parks the tool plugin.
+    await ctx.plugin(WorkingDirectoryService)
     await ctx.plugin(ApprovalService)
     await ctx.plugin(SandboxedFileSystem, {})
     await ctx.plugin(ToolFs as unknown as Parameters<Context['plugin']>[0], {})

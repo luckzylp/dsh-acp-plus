@@ -24,6 +24,11 @@ dsh --profile acp-plus
   verified single-target writes inside them are pre-approved through the
   harness's existing sandbox escalation, while everything else still asks the
   client.
+- **Multi-root workspace prompt** — declared roots reach the model as one
+  ordered system-prompt section with a root map, write boundaries, and optional
+  `@alias/` routing (`@web/src/App.tsx` → `/repos/frontend/src/App.tsx`). The
+  bridge expands the prefix in path-bearing tool arguments and reuses the same
+  expansion for approval containment, so routing never widens the grant.
 - **Commands and modes** — publish the harness command list, execute `/name`
   without a model turn, and advertise `default` / `plan` modes.
 - **Elicitation** — bridge `ask_user_question` to the standard ACP
@@ -111,9 +116,16 @@ The profile patch configures the bridge row:
 | `sessionListPageSize` | integer >= 1 | `100` | Maximum sessions returned by one `session/list` page. |
 | `enableSessionLoad` | boolean | `false` | Advertise and serve `session/load` transcript replay. |
 | `enableAdditionalDirectories` | boolean | `false` | Accept `additionalDirectories` with containment-checked pre-approval. |
+| `additionalDirectoriesPrompt` | `routing` / `map` / `off` | `routing` | `routing` lists roots and expands `@alias/` paths; `map` lists roots only (absolute paths); `off` injects nothing. |
 
 The shipped profile enables both `enableSessionLoad` and
 `enableAdditionalDirectories`.
+
+`additionalDirectoriesPrompt` only matters when roots are actually declared.
+`routing` is not a write grant: it changes path spelling, and every `write` /
+`edit` still goes through the containment-checked escalation described above.
+Use `map` when you want the root map without any tool-layer path rewriting, or
+`off` to leave the session's prompt and tools untouched.
 
 Inspect the composed configuration and its schema:
 

@@ -33,3 +33,4 @@
         # are deliberately unsupported (PLAN D9).
         enableSessionLoad: true
         enableAdditionalDirectories: true
+        additionalDirectoriesPrompt: routing

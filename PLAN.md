@@ -176,8 +176,19 @@ agent 可达面，必须：
   就直接回 `allowed-once`（客户端已在会话级给过授权）；其余一律照旧转发给客户端：
   bash（命令不可验证）、越界路径、`read-only` 站立策略、非 escalation 的
   `tools/pre-execute` ask。
-- ✅ 每个接受的根作为 per-agent runtime context 注入（`acp-plus:additional-directories`），
-  告诉模型在该根内写文件要带 `sandbox_permissions="danger-full-access"` + 理由。
+- ✅ 模型侧由 `features/workspace-roots.ts` 注入一个 per-agent **系统提示词 section**
+  （`acp-plus:workspace-roots`，order 950）：根映射表（alias / 绝对路径 / 该会话的
+  写权限）、默认 cwd、`@alias/` 路由规则、首次触达时阅读各根 `AGENTS.md` / `CLAUDE.md`
+  的约定，以及与该会话站立 sandbox 一致的写入边界。section 用 `interpolate: false`，
+  路径里的 `{{…}}` 不会被当成提示词变量。**不**自动注入各根约定文件正文，避免上下文
+  随根数膨胀。
+- ✅ `@alias/` 不是“提示词自觉”：`tools/execute` per-agent wrapper 在真正 dispatch 前
+  展开 `file_path` / `path` / `workdir` / `cwd` 四个路径参数；审批 containment 用同一
+  展开函数，因此 `@web/x` 的写入仍能命中预批准。durable `tool/call` 保留模型原始
+  `@web/x` 拼写，不篡改日志。
+- ✅ 提供 `additionalDirectoriesPrompt: 'routing' | 'map' | 'off'`：`routing`（默认）
+  根映射 + 可用的 `@alias/`；`map` 只列根、要求绝对路径；`off` 不注入。`map`/`off`
+  不注册 alias 展开，避免“提示词没说、工具却改写”的不一致。
 - ✅ `initialize` 在 `enableAdditionalDirectories` 开启时广告
   `sessionCapabilities.additionalDirectories`；load/resume 重复声明时重新校验。
 - ✅ 默认 `workspace-write` 部署下，授权根内的一次 `write`/`edit` 真实可用
@@ -190,6 +201,8 @@ agent 可达面，必须：
   可达面被调用路径的 containment 检查限定。bash 命令无法静态验证，额外根内的
   shell 写入仍需客户端逐次批准（或用户自行切 session preset）。
 - `read-only` 站立策略不自动预批准，仍由人决定。
+- 提示词层不是授权层：`@alias/` 只改变参数拼写；真正执行仍需 `sandbox_permissions`
+  与 containment 检查。列出根不会放宽 `read-only`，也不会让 bash 写入变成预批准。
 - 授权集合不持久化：load/resume 由客户端重新声明并重新校验；丢弃/改变集合只会
   缩小自动批准范围，不会扩大。
 - 残余 TOCTOU：containment 在批准时解析，工具执行前路径可能被换链；与
@@ -399,3 +412,8 @@ agentclientprotocol org adapters，zeron 的 ACP driver 消费：客户端在
 - [x] D11 实现 `_session/steering` 扩展（无 deployment gate，客户端只有看到
   `initialize._meta.steering.supported` 才会使用）：运行中走 `agent.steer()`，空闲回
   `{ outcome: 'promptRequired', reason: 'noRunningTurn' }` 交回普通 prompt。见 §2 M7。
+- [x] D12 多根的模型侧采用**系统提示词 section + 真实路径展开**，而不是只写提示词：
+  DSH 文件工具本身不识别 `@alias/`，若只注入语法而不展开，模型会得到必然失败的
+  路径。展开放在 per-agent `tools/execute` wrapper（`tools/pre-execute` 明确不可改写
+  参数），并且审批 containment 复用同一展开函数；`map`/`off` 模式不注册展开，避免
+  提示词与工具行为不一致。见 §2 M3 与 `tests/workspace-roots.test.ts`。

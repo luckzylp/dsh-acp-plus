@@ -26,6 +26,7 @@
 | `default-model.test.ts` | M6（D10） | 未配置 provider/model 时回落 `agent-default-model`；图片能力跟随默认路由；显式配置优先 | ✅ |
 | `steering.test.ts` | M7（D11） | `_session/steering` 广告、空闲交回、运行中注入（durable inbox 断言）、未知 session 拒绝 | ✅ |
 | `directories.test.ts` | M3 | 授权/去重/物理身份/上限与 containment 单测；能力广告与接受；resume/load 重校验；真实 `write` 工具 e2e：根内 escalation 自动放行并落盘、根外与 read-only 仍向客户端请求 | ✅ |
+| `workspace-roots.test.ts` | M3（D12） | alias 确定性/清洗/冲突；`@alias/` 展开与参数改写；`routing`/`map`/`read-only` 提示词；系统提示词注入/无根不注入/花括号路径不插值；真实 `write` 用 `@alias/` 落盘且预批准、日志保留原始拼写 | ✅ |
 
 `tests/stubs/` 只服务于打包：测试图里的可选/原生依赖（MCP transport、
 `node-addon-system/flock`）在这里换成最小替身。`flock` 替身在进程内用

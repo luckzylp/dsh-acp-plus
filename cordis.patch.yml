@@ -56,6 +56,10 @@
         # choose cwd, so this is the same trust level.
         enableSessionLoad: true
         enableAdditionalDirectories: true
+        # Declared roots reach the model as one system-prompt section with a
+        # root map and working @alias/ routing. `map` keeps the map but drops
+        # the syntax; `off` injects nothing.
+        additionalDirectoriesPrompt: routing
         # Commands and modes (M5) are client-visible additions with no gate;
         # elicitation activates only for clients declaring form support.
         # Client terminals are deliberately unsupported (PLAN D9): DSH always

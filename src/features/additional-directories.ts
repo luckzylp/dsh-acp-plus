@@ -21,6 +21,9 @@
  *   wherever the target cannot be verified.
  * - `load`/`resume` re-declare and re-validate the same way; a dropped or
  *   changed set only narrows what is auto-approved, never widens it.
+ * - `features/workspace-roots.ts` owns the model-facing half: one prompt
+ *   section listing the roots and, in `routing` mode, `@alias/` expansion in
+ *   path-bearing tool arguments. That layer never widens the grant above.
  *
  * Open question D1 resolved as **session-level**: the ACP client is the trusted
  * automation peer and declares the roots once per lifecycle request, exactly as
@@ -37,16 +40,12 @@ import { isAbsolute, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
-import type {} from '@deepseek-ai/dsh-system-prompt'
 
 /** Upper bound on declared roots; keeps one session's grant reviewable. */
 export const MAX_ADDITIONAL_DIRECTORIES = 16
 
 /** Tools whose single mutation target the bridge can verify before approving. */
 const SINGLE_TARGET_TOOLS: ReadonlySet<string> = new Set(['write', 'edit'])
-
-/** Runtime-context name for the declared-root hint. */
-export const ADDITIONAL_DIRECTORIES_CONTEXT = 'acp-plus:additional-directories'
 
 /** Caller-correctable additional-directories failure. */
 export class AcpPlusAdditionalDirectoriesError extends Error {
@@ -153,27 +152,4 @@ export async function preApprovedEscalation(
     return false
   }
   return roots.some(root => isPathUnder(String(target.targetKey), root))
-}
-
-/**
- * Publish the declared roots to the model as runtime context.
- *
- * The sandbox denial/hint already teaches the retry loop, but the hint does not
- * know which directories the client pre-approved. This context does, so the
- * model escalates the exact operation once instead of rediscovering it.
- * @param agentCtx - unpublished Agent scope that owns the context contribution.
- * @param roots - canonical declared roots for this session.
- */
-export function registerAdditionalDirectoriesContext(agentCtx: Context, roots: readonly string[]): void {
-  if (roots.length === 0) return
-  const systemPrompt = agentCtx.get('systemPrompt')
-  if (systemPrompt === undefined) return
-  systemPrompt.context({
-    name: ADDITIONAL_DIRECTORIES_CONTEXT,
-    order: systemPrompt.getContextOrder('SANDBOX_POLICY') + 1,
-    text: () => `Additional workspace roots pre-authorized by the client: ${roots.map(root => JSON.stringify(root)).join(', ')}. `
-      + 'A write or edit whose path lies inside one of these roots is pre-approved: include '
-      + 'sandbox_permissions="danger-full-access" and a one-sentence justification on that call. '
-      + 'Anything outside them keeps the standing sandbox policy and its approval flow.',
-  })
 }

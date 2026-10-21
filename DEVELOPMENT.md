@@ -77,6 +77,7 @@ Breaking one of these breaks the bridge in ways that are hard to diagnose.
 | `src/app.ts` | `packages/bundle/acp-app/src/index.ts` |
 | `src/features/session-load.ts` | Increment: native has no `session/load` replay |
 | `src/features/additional-directories.ts` | Increment: native rejects `additionalDirectories` |
+| `src/features/workspace-roots.ts` | Increment: multi-root prompt section + `@alias/` expansion |
 | `src/features/commands.ts`, `modes.ts`, `elicitation.ts` | Increment: commands, modes, elicitation |
 | `src/features/steering.ts` | Increment: `_session/steering` mid-turn injection |
 
