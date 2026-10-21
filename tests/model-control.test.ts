@@ -160,3 +160,56 @@ test('exposes and restores a provider-owned reasoning default', async () => {
   assert.equal(restored.find(option => option.id === 'reasoning_effort')?.currentValue, '')
   assert.deepEqual(control.selection.current, { provider: 'mock', model: 'mock' })
 })
+
+test('groups the model option by provider and switches across groups', async () => {
+  const runtime = llmRuntime({
+    listProviders: () => [
+      { id: 'alpha', name: 'Alpha Gateway' },
+      { id: 'beta', name: 'Beta' },
+    ],
+    listModels: (provider: string) => Promise.resolve(provider === 'alpha'
+      ? [
+          { provider: 'alpha', id: 'a1', name: 'A One' },
+          { provider: 'alpha', id: 'a2', name: 'A Two' },
+        ]
+      : [{ provider: 'beta', id: 'b1', name: 'B One' }]),
+    resolveCallConfig: (selection: Selection) => Promise.resolve({
+      provider: selection.provider ?? 'alpha',
+      model: selection.model ?? 'a1',
+    }),
+    resolveModelInfo: (provider: string, model: string) => Promise.resolve({
+      provider,
+      id: model,
+      name: model,
+    }),
+  })
+  const control = new AcpPlusModelControl(runtime, { provider: 'alpha', model: 'a1' })
+
+  const [model] = await control.options()
+  assert.deepEqual(model, {
+    id: 'model',
+    name: 'Model',
+    category: 'model',
+    type: 'select',
+    currentValue: '["alpha","a1"]',
+    options: [
+      {
+        group: 'alpha',
+        name: 'Alpha Gateway',
+        options: [
+          { value: '["alpha","a1"]', name: 'A One' },
+          { value: '["alpha","a2"]', name: 'A Two' },
+        ],
+      },
+      {
+        group: 'beta',
+        name: 'Beta',
+        options: [{ value: '["beta","b1"]', name: 'B One' }],
+      },
+    ],
+  })
+
+  const updated = await control.set('model', '["beta","b1"]')
+  assert.equal(updated.find(option => option.id === 'model')?.currentValue, '["beta","b1"]')
+  assert.deepEqual(control.snapshot(), { provider: 'beta', model: 'b1' })
+})

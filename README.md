@@ -292,17 +292,60 @@ chat after changing it.
 `provider` / `model` are optional. When unset, the bridge follows
 `agent-default-model` — the default model service the dsh Web Models page
 writes — so a deployment configures its model once and every entry point
-follows. Provider routes (`llm-pi-ai` providers) and the default model can be
-shared across profiles by putting them in `$DSH_HOME/cordis.patch.yml`.
+follows.
 
-Note that a DSH patch replaces the whole `config` object of the row it targets:
-overriding the `acp-plus` row requires restating `sessionListPageSize`,
-`enableSessionLoad`, and `enableAdditionalDirectories`. Configuring only the
-model does not touch that row.
+Provider routes are **composition state**, not session state. A dsh profile
+starts from its own bundle set and its own `cordis.patch.yml`, so a route added
+through the Web Models page belongs to the Web profile and is not inherited by
+`acp-plus`. The bridge can only list routes registered in the running profile;
+it does not invent providers.
+
+Mount the same `llm-pi-ai` profiles in the ACP profile to make their models
+selectable. Either add the block to
+`$DSH_HOME/profiles/acp-plus/cordis.patch.yml`:
+
+```yaml
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      my-gateway:
+        displayName: My Gateway
+        apiKeyEnv: MY_GATEWAY_API_KEY
+        api: openai-completions
+        baseURL: https://gateway.example/v1
+        models:
+          - id: model-a
+            name: Model A
+            contextWindow: 262144
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: my-gateway
+    model: model-a
+```
+
+or move the same rows to the home-level `$DSH_HOME/cordis.patch.yml` so every
+profile shares one provider list. The home patch is applied last, so it
+replaces, rather than merges with, a profile's `llm-pi-ai` config; include every
+route you want there. A DSH patch also replaces the whole `config` object of
+the row it targets: overriding the `acp-plus` row requires restating
+`sessionListPageSize`, `enableSessionLoad`, and `enableAdditionalDirectories`.
+Configuring only the model does not touch that row.
+
+The ACP `model` option is a grouped select: one group per registered provider,
+labelled with that provider's display name, and one option per model. Zed
+renders those group names as separators in its model picker. The selected route
+is validated with `resolveCallConfig` before it is published.
 
 API keys are home-level and shared by every profile
 (`$DSH_HOME/.credentials.yaml`, written by the Web Models page or supplied
-through the launch environment).
+through the launch environment). `llm-pi-ai` resolves each route's `apiKeyEnv`
+while listing models; a missing or unusable credential makes that route return
+an empty catalog, so its group is omitted from the picker even though the route
+is registered. If a provider you configured is missing, check the credential
+reference and that the process running the ACP agent can read
+`$DSH_HOME/.credentials.yaml`.
 
 ## Relationship to the native bridge
 
