@@ -131,6 +131,15 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
     return ctx.get('agentDefaultModel')?.currentSelection()
   }
   const logger = ctx.logger
+  /**
+   * Wait for the optional desktop-provider import before a session snapshots
+   * its config options. The row publishes a readiness promise immediately; when
+   * it is not mounted this is a no-op.
+   */
+  const awaitProviderRoutes = async (): Promise<void> => {
+    const gate = ctx.get('acpPlusProviders' as never) as { ready?: Promise<void> } | undefined
+    await gate?.ready
+  }
   // Read once: the Zed `agent_servers.env` value is fixed for this process.
   const configuredAgentPreset = agentPresetFromEnvironment()
   const sessions = new Map<SessionId, AcpPlusSession>()
@@ -343,6 +352,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
 
     async newSession(params: NewSessionRequest, signal: AbortSignal): Promise<NewSessionResponse> {
       assertOpen()
+      await awaitProviderRoutes()
       const additionalDirectories = await authorizeWorkspace(params)
       let agentPreset: string | undefined
       try {
@@ -440,6 +450,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
 
     async resumeSession(params: ResumeSessionRequest, signal: AbortSignal): Promise<ResumeSessionResponse> {
       assertOpen()
+      await awaitProviderRoutes()
       const additionalDirectories = await authorizeWorkspace(params)
       const sessionId = brandString<SessionId>(params.sessionId)
       if (sessions.has(sessionId) || activating.has(sessionId) || ctx.sessions.get(sessionId) !== undefined) {
@@ -500,6 +511,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
 
     async loadSession(params: LoadSessionRequest, signal: AbortSignal): Promise<LoadSessionResponse> {
       assertOpen()
+      await awaitProviderRoutes()
       if (!spec.features.sessionLoad) throw invalidParams('session/load is not enabled by this deployment')
       const additionalDirectories = await authorizeWorkspace(params)
       const sessionId = brandString<SessionId>(params.sessionId)

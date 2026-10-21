@@ -38,14 +38,14 @@
     - id: tool-ask-user
       name: '@deepseek-ai/dsh-tool-ask-user'
 
-    # ACP profiles are separate compositions, so routes added by the Web
-    # Models page live only in the Web profile's patch. Read that profile's
-    # `llm-pi-ai` block at startup and activate the same routes here. Set
-    # `from` to other profile names or absolute YAML/JSON paths as needed.
+    # ACP profiles are separate compositions, so routes added by the desktop
+    # app's Models page live only in the desktop profile's patch. Read that
+    # profile's `llm-pi-ai` block at startup and activate the same routes here.
+    # Set `from` to other profile names or absolute YAML/JSON paths as needed.
     - id: acp-plus-providers
       name: 'dsh-acp-plus/providers'
       config:
-        from: [web, desktop]
+        from: [desktop]
 
     - id: acp-plus
       name: 'dsh-acp-plus'

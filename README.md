@@ -47,10 +47,10 @@ dsh --profile acp-plus
 - **Default-model fallback** — with no provider/model in its own config, the
   bridge follows the composition's `agent-default-model` (the same default the
   dsh Web Models page writes).
-- **Web provider routes** — import the `llm-pi-ai` providers from the Web
-  profile at startup, so third-party models configured in the Web Models page
-  appear as grouped choices in the ACP model picker instead of only offering
-  the DeepSeek route.
+- **Desktop provider routes** — import the `llm-pi-ai` providers from the
+  desktop profile at startup, so third-party models configured in the desktop
+  Models page appear as grouped choices in the ACP model picker instead of only
+  offering the DeepSeek route.
 
 ## Multi-root workspace (soft support)
 
@@ -294,38 +294,39 @@ chat after changing it.
 ### Models and credentials
 
 `provider` / `model` are optional. When unset, the bridge follows
-`agent-default-model` — the default model service the dsh Web Models page
+`agent-default-model` — the default model service the desktop Models page
 writes — so a deployment configures its model once and every entry point
 follows.
 
 Provider routes are **composition state**, not session state. A dsh profile
 starts from its own bundle set and its own `cordis.patch.yml`, so a route added
-through the Web Models page belongs to the Web profile and is not inherited by
-`acp-plus`. The bridge can only list routes registered in the running profile;
-it does not invent providers.
+through the desktop app's Models page belongs to the desktop profile and is not
+inherited by `acp-plus`. The bridge can only list routes registered in the
+running profile; it does not invent providers.
 
 The shipped profile therefore mounts `acp-plus-providers`, which reads the
-`llm-pi-ai` block from `$DSH_HOME/profiles/web/cordis.patch.yml` at startup and
-applies those routes to the running adapter. The Web Models page remains the
-source of truth: add or edit providers there, then restart the ACP agent (the
-import runs once per process). Nothing is copied into the ACP profile patch and
-no secret is read by the importer; `apiKeyEnv` still resolves through the shared
-credential store per request.
+`llm-pi-ai` block from `$DSH_HOME/profiles/desktop/cordis.patch.yml` at startup
+and applies those routes to the running adapter. The desktop Models page remains
+the source of truth: add or edit providers there, then restart the ACP agent
+(the import runs once per process). Nothing is copied into the ACP profile patch
+and no secret is read by the importer; `apiKeyEnv` still resolves through the
+shared credential store per request.
 
 ```yaml
 - insert:
     - id: acp-plus-providers
       name: 'dsh-acp-plus/providers'
       config:
-        from: [web, desktop]
+        from: [desktop]
 ```
 
 `from` accepts profile names (resolved under
 `$DSH_HOME/profiles/<name>/cordis.patch.yml`), absolute or relative YAML/JSON
 files, or a list of either; later sources override earlier providers with the
-same route id. The shipped row reads `web` first and then `desktop`, because the
-Web UI may be either `dsh web` or the desktop app; trim the list to the profile
-you actually use. Inline `providers` on the same row override imported keys.
+same route id. The shipped row reads `desktop` only. Add `web` (`from: [desktop,
+web]`) only if you configure providers through a standalone `dsh web` profile;
+that profile is a separate composition and does not share the desktop app's
+patch. Inline `providers` on the same row override imported keys.
 
 You can also declare routes directly in
 `$DSH_HOME/profiles/acp-plus/cordis.patch.yml` with a normal `llm-pi-ai` block,

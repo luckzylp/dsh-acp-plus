@@ -2,12 +2,12 @@
  * Activate `llm-pi-ai` routes from another dsh profile's provider settings.
  *
  * Provider routes are composition state: a profile only sees the `llm-pi-ai`
- * profiles in its own patch. The Web Models page writes those profiles into
- * the active Web profile's `cordis.patch.yml`, so an ACP profile starting from
- * a different composition would otherwise show only its own routes. This row
- * reads the named profiles' `llm-pi-ai` blocks at startup and applies their
- * providers to the mounted adapter, without copying secrets or touching the
- * ACP profile's on-disk configuration.
+ * profiles in its own patch. The desktop app's Models page writes those
+ * profiles into the desktop profile's `cordis.patch.yml`, so an ACP profile
+ * starting from a different composition would otherwise show only its own
+ * routes. This row reads the named profiles' `llm-pi-ai` blocks at startup and
+ * applies their providers to the mounted adapter, without copying secrets or
+ * touching the ACP profile's on-disk configuration.
  *
  * @module dsh-acp-plus/providers
  */
@@ -29,6 +29,14 @@ export const name = 'acp-plus-providers'
 
 /** The adapter whose dormant routes this row activates. */
 export const inject = ['llm']
+
+/** Readiness service consumed by the ACP bridge before serving a session. */
+export const ACP_PLUS_PROVIDERS_SERVICE = 'acpPlusProviders'
+
+/** Readiness state published even while the provider import is still running. */
+export interface AcpPlusProvidersState {
+  ready: Promise<void>
+}
 
 /** Deployment configuration for provider import. */
 export interface AcpPlusProvidersConfig {
@@ -59,8 +67,14 @@ interface LoaderLike {
   entries(): Iterable<LoaderEntry>
 }
 
-/** Read configured provider routes and activate them on the mounted adapter. */
+/** Start the import and publish its readiness before any session is served. */
 export function apply(ctx: Context, config: AcpPlusProvidersConfig): void {
+  const ready = importProviders(ctx, config)
+  ctx.provide(ACP_PLUS_PROVIDERS_SERVICE, { ready } satisfies AcpPlusProvidersState)
+}
+
+/** Read configured provider routes and activate them on the mounted adapter. */
+async function importProviders(ctx: Context, config: AcpPlusProvidersConfig): Promise<void> {
   const explicit = isRecord(config.providers) ? config.providers : {}
   const imported: ProviderProfiles = {}
   for (const source of normalizeSources(config.from)) {
@@ -92,5 +106,5 @@ export function apply(ctx: Context, config: AcpPlusProvidersConfig): void {
   const existing = isRecord(current.providers) ? current.providers : {}
   // Volatile provider config is committed into the running adapter; no write
   // reaches the ACP profile, and a later start reruns this import.
-  void entry.update({ config: { ...current, providers: { ...existing, ...providers } } })
+  await entry.update({ config: { ...current, providers: { ...existing, ...providers } } })
 }
