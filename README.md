@@ -104,14 +104,53 @@ From GitHub:
 dsh plugin --profile acp-plus add github:AndPuQing/dsh-acp-plus
 ```
 
-From a local checkout:
+From a local checkout, choose **link** or **copy**.
+
+Link — development mode; `node_modules/dsh-acp-plus` points at the checkout:
 
 ```sh
 dsh plugin --profile acp-plus add .
 ```
 
+Copy — an independent snapshot in the profile (recommended for a stable local
+install):
+
+```sh
+dsh plugin --profile acp-plus remove dsh-acp-plus
+dsh plugin --profile acp-plus add file:/absolute/path/to/dsh-acp-plus
+```
+
+`dsh plugin` forwards to pnpm in the profile directory. `add .` records a
+`link:` dependency, while `file:` records a `file:` dependency; because the
+profile uses `nodeLinker: hoisted`, pnpm installs the package contents as a
+real directory rather than a symlink to the checkout. Check what is installed:
+
+```sh
+cat ~/.dsh/profiles/acp-plus/package.json
+ls -ld ~/.dsh/profiles/acp-plus/node_modules/dsh-acp-plus
+readlink -f ~/.dsh/profiles/acp-plus/node_modules/dsh-acp-plus
+```
+
+For a copy, `readlink -f` prints the profile path itself; for a link it prints
+the checkout path.
+
 The build output (`lib/`) is committed, so neither route runs a build script.
 After changing source, run `npm run build` and commit `lib/` with the change.
+For a **copy** install, refresh the profile snapshot after building:
+
+```sh
+dsh plugin --profile acp-plus remove dsh-acp-plus
+dsh plugin --profile acp-plus add file:/absolute/path/to/dsh-acp-plus
+```
+
+For a fully self-contained artifact, pack a tarball and install that instead:
+
+```sh
+mkdir -p ~/.dsh/profiles/acp-plus/vendor
+npm pack --pack-destination ~/.dsh/profiles/acp-plus/vendor
+dsh plugin --profile acp-plus remove dsh-acp-plus
+dsh plugin --profile acp-plus add file:./vendor/dsh-acp-plus-0.1.2.tgz
+```
 
 To replace the native bridge inside the shipped `acp` profile instead:
 
