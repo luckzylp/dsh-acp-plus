@@ -23,7 +23,11 @@ import {
 import type { Agent, AgentHandle, AgentOptions, ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, errorChain, type UserMessage } from '@deepseek-ai/dsh-llm'
+// Type-only: declaration-merges the permission knob session events below.
+import type {} from '@deepseek-ai/dsh-permission-presets'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { type Session, type SessionEvent, type SessionId, type TurnEndReason } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-user-approval'
 import { AcpPlusContentError, admitAcpPrompt } from './content.ts'
 import { turnEndToStopReason } from './codec.ts'
 import { preApprovedEscalation } from './features/additional-directories.ts'
@@ -35,6 +39,11 @@ import {
   promptCommandLine,
 } from './features/commands.ts'
 import { DEFAULT_MODE_ID, PLAN_MODE_ID, sessionModeState, setSessionMode } from './features/modes.ts'
+import {
+  AcpPlusSessionOptionError,
+  sessionConfigOptions,
+  setSessionConfigOption,
+} from './features/session-options.ts'
 import {
   expandWorkspacePath,
   registerWorkspaceRoots,
@@ -150,6 +159,11 @@ export class AcpPlusSession {
   private outputTail = Promise.resolve()
   private inflight: InflightPrompt | undefined
   private closing: Promise<void> | undefined
+  /** One config-option snapshot is in flight; later changes coalesce into another. */
+  private configPublishPending = false
+  private configPublishDirty = false
+  /** Last delivered option state, so multi-event knob changes emit once. */
+  private configOptionsSnapshot = ''
   /** Current slash-command execution, aborted by session cancellation or close. */
   private commandAbort: AbortController | undefined
   private readonly pendingSelections = new Map<string, ModelSelection>()
@@ -281,9 +295,10 @@ export class AcpPlusSession {
    * @param signal - optional request cancellation.
    * @returns every advertised configuration option.
    */
-  configOptions(signal?: AbortSignal): Promise<SessionConfigOption[]> {
+  async configOptions(signal?: AbortSignal): Promise<SessionConfigOption[]> {
     this.assertActive()
-    return this.modelControl.options(signal)
+    const modelOptions = await this.modelControl.options(signal)
+    return [...modelOptions, ...sessionConfigOptions(this.ctx, this.agent)]
   }
 
   /**
@@ -293,8 +308,10 @@ export class AcpPlusSession {
    * @param signal - optional request cancellation.
    * @returns the complete resulting option state.
    */
-  setConfig(configId: string, value: unknown, signal?: AbortSignal): Promise<SessionConfigOption[]> {
+  async setConfig(configId: string, value: unknown, signal?: AbortSignal): Promise<SessionConfigOption[]> {
     this.assertActive()
+    if (typeof value !== 'string') throw new AcpPlusSessionOptionError(`${configId} requires a select value`)
+    if (setSessionConfigOption(this.ctx, this.agent, configId, value)) return this.configOptions(signal)
     return this.modelControl.set(configId, value, signal)
   }
 
@@ -323,22 +340,49 @@ export class AcpPlusSession {
   setMode(modeId: string): void {
     this.assertActive()
     setSessionMode(this.ctx, this.agent, modeId)
+    this.configChanged()
+  }
+
+  /** Publish the complete option state after a session-owned control changes. */
+  configChanged(): void {
+    if (this.closing !== undefined) return
+    if (this.configPublishPending) {
+      this.configPublishDirty = true
+      return
+    }
+    void this.publishConfigOptions()
   }
 
   /** Resolve topology state off-chain, then serialize its notification without blocking execution updates. */
   topologyChanged(): void {
+    this.configChanged()
+  }
+
+  /** Re-read model and session options, then publish one complete update. */
+  private async publishConfigOptions(): Promise<void> {
     if (this.closing !== undefined) return
-    void this.modelControl.options()
-      .then((configOptions) => {
-        if (this.closing !== undefined) return
-        this.enqueue(() => this.notify({
-          sessionId: this.agent.session.id,
-          update: { sessionUpdate: 'config_option_update', configOptions },
-        }))
-      })
-      .catch((error: unknown) => {
+    this.configPublishPending = true
+    try {
+      const configOptions = await this.configOptions()
+      if (this.closing !== undefined) return
+      const snapshot = JSON.stringify(configOptions)
+      if (snapshot === this.configOptionsSnapshot) return
+      this.configOptionsSnapshot = snapshot
+      this.enqueue(() => this.notify({
+        sessionId: this.agent.session.id,
+        update: { sessionUpdate: 'config_option_update', configOptions },
+      }))
+    } catch (error: unknown) {
+      if (this.closing === undefined) {
         this.ctx.logger.warn(`acp-plus: config-option update failed: ${errorChain(error)}`)
-      })
+      }
+    } finally {
+      this.configPublishPending = false
+      if (this.configPublishDirty) {
+        this.configPublishDirty = false
+        this.configChanged()
+      }
+    }
   }
 
   /**
@@ -524,6 +568,13 @@ export class AcpPlusSession {
             currentModeId: event.data.active ? PLAN_MODE_ID : DEFAULT_MODE_ID,
           },
         }))
+        this.configChanged()
+      } else if (
+        event.type === 'permission/preset'
+        || event.type === 'sandbox/mode'
+        || event.type === 'approval/policy'
+      ) {
+        this.configChanged()
       }
     } finally {
       const inflight = this.inflight

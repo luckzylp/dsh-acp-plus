@@ -137,10 +137,6 @@ export class MockAdapter extends LlmAdapter {
   }
 }
 
-/** Accept both the named-export plugin shape and an older default export. */
-const JsonlSessionPersistence = (JsonlSessionPersistenceModule as { default?: unknown }).default
-  ?? JsonlSessionPersistenceModule
-
 const IMAGE_LIMITS: ImageAttachmentLimits = {
   maxImageBytes: 1024,
   maxImagesPerMessage: 4,
@@ -256,6 +252,14 @@ export interface BridgeClient {
   cancel: NonNullable<AcpAgent['cancel']>
 }
 
+/** Captured permission-preset traffic for session-option tests. */
+export interface PermissionPresetFixture {
+  /** Current preset value the stub reports. */
+  current: () => string
+  /** Preset names passed to the stub's `set`. */
+  setCalls: string[]
+}
+
 /** One connected bridge plus the client, adapter, and captured traffic. */
 export interface BridgeHarness {
   ctx: Context
@@ -265,6 +269,7 @@ export interface BridgeHarness {
   permissionRequests: RequestPermissionRequest[]
   elicitation: ElicitationFixture
   persistenceRoot: string
+  permissionPresets: PermissionPresetFixture
   dispose: () => Promise<void>
 }
 
@@ -285,6 +290,11 @@ export async function makeBridgeHarness(options: {
   commands?: boolean
   /** Mount the plan-mode controller for session-mode tests. */
   planMode?: boolean
+  /** Provide a permission-preset service stub for session-option tests. */
+  permissionPresets?: boolean | {
+    options?: Array<{ value: string; name: string; description?: string }>
+    current?: string
+  }
   /** Mount the user-question service and its model-facing tool. */
   userQuestions?: boolean
   /** Mount the storage stack and dsh's workspace registry for grouping tests. */
@@ -310,7 +320,7 @@ export async function makeBridgeHarness(options: {
       model: options.defaultModel.model,
     })
   }
-  await ctx.plugin(JsonlSessionPersistence as Parameters<Context['plugin']>[0], {
+  await ctx.plugin(JsonlSessionPersistenceModule as Parameters<Context['plugin']>[0], {
     root: persistenceRoot,
     compression: 'none',
   })
@@ -336,6 +346,36 @@ export async function makeBridgeHarness(options: {
   }
   if (options.commands === true) await ctx.plugin(CommandRuntime)
   if (options.planMode === true) await ctx.plugin(PlanModeController, { section: 'Plan mode is active.' })
+  const permissionPresetState = options.permissionPresets === undefined
+    ? undefined
+    : {
+      options: (typeof options.permissionPresets === 'object' ? options.permissionPresets.options : undefined) ?? [
+        { value: 'workspace-write', name: 'Workspace write' },
+        { value: 'danger-full-access', name: 'Full access' },
+      ],
+      current: (typeof options.permissionPresets === 'object' ? options.permissionPresets.current : undefined)
+        ?? 'workspace-write',
+      setCalls: [] as string[],
+    }
+  if (permissionPresetState !== undefined) {
+    // A test stub keeps the bridge contract observable without mounting the
+    // real permission service's shell/approval dependencies.
+    ctx.provide('permissionPresets', {
+      catalog: () => ({
+        options: permissionPresetState.options,
+        defaultOptions: permissionPresetState.options,
+        defaultPreset: permissionPresetState.current,
+      }),
+      current: () => permissionPresetState.current,
+      set: (_session: unknown, name: string) => {
+        if (!permissionPresetState.options.some(option => option.value === name)) {
+          throw new Error(`unknown permission preset: ${name}`)
+        }
+        permissionPresetState.current = name
+        permissionPresetState.setCalls.push(name)
+      },
+    } as never)
+  }
   if (options.userQuestions === true) {
     await ctx.plugin(UserQuestionService)
     await ctx.plugin(ToolAskUser as unknown as Parameters<Context['plugin']>[0])
@@ -371,6 +411,10 @@ export async function makeBridgeHarness(options: {
     permissionRequests,
     elicitation,
     persistenceRoot,
+    permissionPresets: {
+      current: () => permissionPresetState?.current ?? '',
+      setCalls: permissionPresetState?.setCalls ?? [],
+    },
     client: undefined as unknown as BridgeClient,
     dispose: async () => {
       await ctx.fiber.dispose()

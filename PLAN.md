@@ -267,6 +267,13 @@ agent 可达面，必须：
   `set_mode` 拒绝一切非 default）；`session/set_mode` → `ctx.planMode.set`，
   `plan/mode` 事件 → `current_mode_update`；当前模式从 `plan` projection 折叠读取，
   resume 后自然恢复。plan mode 只是提示轴，不触碰 approval/sandbox（有测试锁定）。
+- ✅ **config options**（`features/session-options.ts`）：Zed 1.24.x 在响应同时含
+  `configOptions` 与 `modes` 时，`config_state()` 直接取 config options 并丢弃
+  `modes`，所以仅广告 `modes` 的客户端只看到 model/reasoning。桥因此把 plan mode
+  再投影为 `category: "mode"` 的 `mode` select，把 `ctx.permissionPresets` 投影为
+  `category: "_permission"` 的 `permission` select；两者都走原有的
+  `session/set_mode` / `permissionPresets.set` 路径，不新增权限语义。未挂载 plan-mode
+  或 permission-presets 时对应 option 完全省略。
 - 三块都是纯增量：没有 deployment gate（commands/modes 客户端会忽略不认识的 update；
   elicitation 由客户端能力门控），与原生 parity 场景无交集。
 
@@ -277,7 +284,8 @@ agent 可达面，必须：
 **测试**：`tests/elicitation.test.ts`（表单构建/答案映射单测 + accept/decline/无能力/
 中止 e2e）、`tests/commands.test.ts`（列表、拦截执行、未知命令回落、重推）、
 `tests/modes.test.ts`（默认+plan、set_mode 通知、resume 恢复、无 plan-mode 时单模式、
-沙箱轴不变）。
+沙箱轴不变）、`tests/session-options.test.ts`（Zed 兼容的 mode/permission option、
+设置与未知值拒绝、custom 值展示）。
 
 ---
 
@@ -417,3 +425,8 @@ agentclientprotocol org adapters，zeron 的 ACP driver 消费：客户端在
   路径。展开放在 per-agent `tools/execute` wrapper（`tools/pre-execute` 明确不可改写
   参数），并且审批 containment 复用同一展开函数；`map`/`off` 模式不注册展开，避免
   提示词与工具行为不一致。见 §2 M3 与 `tests/workspace-roots.test.ts`。
+- [x] D13 会话控制同时投影为 `modes` 与 `configOptions`：Zed 1.24.x 的
+  `config_state()` 在两者并存时丢弃 `modes`，只保留 config options；只发 `modes`
+  会让 plan mode 在 Zed 中不可见。桥把 plan mode 投影为 `mode` config option，
+  把 permission presets 投影为 `permission` config option，同时保留 `modes` 给使用
+  该字段的客户端。两条路径指向同一 DSH 服务，不复制状态。见 §2 M5。

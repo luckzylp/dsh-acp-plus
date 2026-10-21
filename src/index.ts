@@ -72,6 +72,7 @@ import {
 } from './features/additional-directories.ts'
 import { answerWithElicitation, type AcpElicitationHost } from './features/elicitation.ts'
 import { AcpPlusSessionModeError } from './features/modes.ts'
+import { AcpPlusSessionOptionError } from './features/session-options.ts'
 import { replaySession } from './features/session-load.ts'
 import {
   parseSteeringRequest,
@@ -570,6 +571,8 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
         return { configOptions: await record.setConfig(params.configId, params.value, signal) }
       } catch (error: unknown) {
         if (error instanceof AcpPlusModelConfigError) throw invalidParams(error.message)
+        if (error instanceof AcpPlusSessionModeError) throw invalidParams(error.message)
+        if (error instanceof AcpPlusSessionOptionError) throw invalidParams(error.message)
         throw error
       }
     },

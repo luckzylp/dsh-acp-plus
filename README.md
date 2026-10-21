@@ -32,8 +32,11 @@ dsh --profile acp-plus
   bridge expands the prefix in path-bearing tool arguments and reuses the same
   expansion for approval containment, so routing never widens the grant. See
   [Multi-root workspace](#multi-root-workspace-soft-support).
-- **Commands and modes** — publish the harness command list, execute `/name`
-  without a model turn, and advertise `default` / `plan` modes.
+- **Commands, modes, and permission presets** — publish the harness command
+  list, execute `/name` without a model turn, and advertise `default` / `plan`
+  modes. Plan mode and the mounted permission presets are also projected as
+  ACP config options, because Zed 1.24.x ignores `modes` whenever config
+  options are present.
 - **Elicitation** — bridge `ask_user_question` to the standard ACP
   `elicitation/create` form when the client declares support.
 - **Steering** — the `_session/steering` extension injects text into a live
@@ -144,10 +147,17 @@ server settings (`zed: open server settings`, i.e. the remote
 
 `sh -lc` picks up the login shell's PATH; an absolute `dsh` path works too.
 Reconnect the remote project and select `dsh-acp-plus` in the agent picker.
-Modes, slash commands, `session/load` replay, and `ask_user_question` (when the
-client declares form elicitation) are available; client terminals are
-intentionally unsupported. Logs:
+The agent panel shows **Model**, **Reasoning effort**, **Mode**, and
+**Permission** when the corresponding services are mounted. `Mode` drives the
+same plan state as `session/set_mode`, and `Permission` drives the same preset
+as the `/permission` command. Slash commands, `session/load` replay, and
+`ask_user_question` (when the client declares form elicitation) are available;
+client terminals are intentionally unsupported. Logs:
 `~/.local/share/zed/logs/server-preview-*.log`.
+
+Zed 1.24.x gives `configOptions` precedence over ACP `modes`: when an agent
+returns both, the mode selector backed by `modes` is discarded. That is why the
+bridge projects plan mode and permission presets into `configOptions` as well.
 
 ## Configuration
 
@@ -206,7 +216,7 @@ keeps its protocol semantics and extends them:
 | `session/resume`, `session/list`, `session/close` | yes | yes |
 | `session/load` transcript replay | no | yes |
 | `additionalDirectories` | no | yes |
-| Commands, modes | no | yes |
+| Commands, modes, permission presets | no | yes |
 | Form elicitation | no | yes |
 | `_session/steering` | no | yes |
 
