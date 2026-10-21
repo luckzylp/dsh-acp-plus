@@ -14,7 +14,8 @@
     ".": "./lib/index.js",
     "./app": "./lib/app.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./providers": "./lib/providers.js"
   },
   "files": [
     "lib",
@@ -28,7 +29,7 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/index.ts src/app.ts --bundle --splitting --platform=node --format=esm --target=node22 --packages=external --external:@deepseek-ai/* --outdir=lib --sourcemap",
+    "build": "esbuild src/index.ts src/app.ts --bundle --splitting --platform=node --format=esm --target=node22 --packages=external --external:@deepseek-ai/* --outdir=lib --sourcemap && esbuild src/providers.ts --bundle --platform=node --format=esm --target=node22 --packages=external --external:@deepseek-ai/* --outfile=lib/providers.js --sourcemap",
     "check": "node scripts/check.mjs",
     "dev": "pnpm build && dsh --profile acp-plus",
     "release:check": "npm run build && node scripts/release-check.mjs",
@@ -36,7 +37,8 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.4.0",
-    "commander": "^15.0.0"
+    "commander": "^15.0.0",
+    "yaml": "^2.8.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",

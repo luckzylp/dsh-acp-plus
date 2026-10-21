@@ -19,7 +19,7 @@ const failures = []
 const patch = manifest.dsh?.bundle?.patch
 if (typeof patch !== 'string') failures.push('package.json is missing dsh.bundle.patch')
 
-for (const file of ['lib/index.js', 'lib/app.js', patch, 'overlay-on-native-acp.yml', 'scripts/smoke-client.mjs']) {
+for (const file of ['lib/index.js', 'lib/app.js', 'lib/providers.js', patch, 'overlay-on-native-acp.yml', 'scripts/smoke-client.mjs']) {
   if (typeof file !== 'string') continue
   try {
     await access(join(root, file))
