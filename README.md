@@ -6,8 +6,9 @@ packaged as an out-of-tree Cordis plugin and profile bundle.
 
 It serves the standard ACP v1 surface and adds the capabilities the shipped
 automation-only `@deepseek-ai/dsh-acp` bridge deliberately omits — transcript
-replay, extra workspace roots, slash commands, plan mode, form elicitation, and
-mid-turn steering — without changing the harness core.
+replay, extra workspace roots (soft multi-root support), slash commands, plan
+mode, form elicitation, and mid-turn steering — without changing the harness
+core.
 
 ```sh
 dsh --profile acp-plus
@@ -24,11 +25,13 @@ dsh --profile acp-plus
   verified single-target writes inside them are pre-approved through the
   harness's existing sandbox escalation, while everything else still asks the
   client.
-- **Multi-root workspace prompt** — declared roots reach the model as one
-  ordered system-prompt section with a root map, write boundaries, and optional
+- **Multi-root workspace (soft support)** — until DSH grows a native
+  multi-root policy, declared roots reach the model as one ordered
+  system-prompt section with a root map, write boundaries, and optional
   `@alias/` routing (`@web/src/App.tsx` → `/repos/frontend/src/App.tsx`). The
   bridge expands the prefix in path-bearing tool arguments and reuses the same
-  expansion for approval containment, so routing never widens the grant.
+  expansion for approval containment, so routing never widens the grant. See
+  [Multi-root workspace](#multi-root-workspace-soft-support).
 - **Commands and modes** — publish the harness command list, execute `/name`
   without a model turn, and advertise `default` / `plan` modes.
 - **Elicitation** — bridge `ask_user_question` to the standard ACP
@@ -38,6 +41,47 @@ dsh --profile acp-plus
 - **Default-model fallback** — with no provider/model in its own config, the
   bridge follows the composition's `agent-default-model` (the same default the
   dsh Web Models page writes).
+
+## Multi-root workspace (soft support)
+
+ACP models a multi-root workspace through the client-declared
+`additionalDirectories` field. This bridge advertises and accepts that
+capability, but **DSH does not yet provide a native multi-root workspace**: its
+sandbox policy still has one `workspace-write` root (the session `cwd`). Until
+upstream adds native multi-root support, this project supplies a **soft
+support layer** instead of pretending the sandbox itself became multi-root:
+
+1. **Protocol declaration** — the ACP client declares extra absolute roots on
+   `session/new`, `session/load`, or `session/resume`; the bridge authorizes
+   them with the same physical-identity rules as `cwd`.
+2. **Sandbox authorization** — the standing sandbox mode is unchanged. Under
+   `workspace-write`, a verified single-target `write` / `edit` under a
+   declared root is pre-approved through the existing escalation; everything
+   else still asks the client.
+3. **Prompt routing** — one per-agent system-prompt section lists the roots,
+   their write boundaries, and the `@alias/` convention, so the model can treat
+   the roots as one logical workspace instead of only seeing the primary cwd.
+
+This is deliberately **not** a native multi-root sandbox. In particular:
+
+- Under `workspace-write`, declaring a root does not make it a persistent write
+  allow-list; each `write` / `edit` remains a containment-checked, one-shot
+  escalation.
+- Under `workspace-write`, bash writes and paths outside every declared root
+  still ask the client; a `read-only` session asks for every write.
+- Root declarations are not persisted. `session/load` and `session/resume`
+  must re-declare them and re-run authorization; a dropped root only narrows
+  what is auto-approved.
+- `@alias/` is a bridge convention, not an ACP standard. It is expanded only
+  for the shipped file tools' top-level path arguments and `bash`'s `workdir`;
+  bash command strings are not rewritten.
+- This layer becomes unnecessary if DSH later exposes a native multi-root
+  policy. The ACP capability and prompt section can then shrink to a thin
+  description of the native behavior.
+
+`additionalDirectoriesPrompt` controls the prompt half: `routing` (default)
+lists roots and enables `@alias/`, `map` lists roots only and expects absolute
+paths, and `off` injects nothing.
 
 ## Requirements
 
