@@ -32,6 +32,9 @@ dsh --profile acp-plus
   bridge expands the prefix in path-bearing tool arguments and reuses the same
   expansion for approval containment, so routing never widens the grant. See
   [Multi-root workspace](#multi-root-workspace-soft-support).
+- **Agent presets** — select a DSH agent composition with
+  `DSH_ACP_AGENT_PRESET`; the choice is recorded in the session and restored by
+  `session/load` / `session/resume`.
 - **Commands, modes, and permission presets** — publish the harness command
   list, execute `/name` without a model turn, and advertise `default` / `plan`
   modes. Plan mode and the mounted permission presets are also projected as
@@ -189,6 +192,48 @@ dsh --profile acp-plus --dump-config
 dsh --profile acp-plus --dump-config-schema
 ```
 
+### Agent presets
+
+ACP has no standard agent-preset field, and Zed does not send one. The bridge
+reads `DSH_ACP_AGENT_PRESET` once when the process starts and binds that preset
+to every new ACP session. Pass it through Zed's `agent_servers.env`:
+
+```json
+{
+  "agent_servers": {
+    "dsh-acp-plus": {
+      "type": "custom",
+      "command": "/bin/sh",
+      "args": ["-lc", "exec dsh --profile acp-plus"],
+      "env": { "DSH_ACP_AGENT_PRESET": "standard" }
+    }
+  }
+}
+```
+
+The shipped profile defines a `standard` preset whose `plugins` list is empty,
+so it inherits the host composition. Add more
+`@deepseek-ai/dsh-agent-preset` rows to the profile patch to define other
+presets:
+
+```yaml
+- insert:
+    - id: preset-review
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: review
+        name: Review
+        plugins:
+          - name: '@deepseek-ai/dsh-tool-todo'
+```
+
+Preset choice is creation-time data: it is recorded in the session header, and
+`session/load` / `session/resume` re-mount that persisted preset instead of
+re-reading the environment. A live session cannot switch presets. With the
+variable unset, ACP sessions keep the host composition and mount no preset.
+The variable is read at startup, so restart the agent connection or start a new
+chat after changing it.
+
 ### Models and credentials
 
 `provider` / `model` are optional. When unset, the bridge follows
@@ -218,6 +263,7 @@ keeps its protocol semantics and extends them:
 | `session/load` transcript replay | no | yes |
 | `additionalDirectories` | no | yes |
 | Commands, modes, permission presets | no | yes |
+| Agent preset selection | no | yes (`DSH_ACP_AGENT_PRESET`) |
 | Form elicitation | no | yes |
 | `_session/steering` | no | yes |
 

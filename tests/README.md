@@ -28,6 +28,7 @@
 | `directories.test.ts` | M3 | 授权/去重/物理身份/上限与 containment 单测；能力广告与接受；resume/load 重校验；真实 `write` 工具 e2e：根内 escalation 自动放行并落盘、根外与 read-only 仍向客户端请求 | ✅ |
 | `workspace-roots.test.ts` | M3（D12） | alias 确定性/清洗/冲突；`@alias/` 展开与参数改写；`routing`/`map`/`read-only` 提示词；系统提示词注入/无根不注入/花括号路径不插值；真实 `write` 用 `@alias/` 落盘且预批准、日志保留原始拼写 | ✅ |
 | `session-options.test.ts` | M5（D13） | plan mode 的 `mode` config option、`set_config_option` 切换与未知值拒绝；permission preset 的 `permission` option、设置与 `custom` 当前值展示；未挂载服务时省略 | ✅ |
+| `agent-presets.test.ts` | M8（D14） | `DSH_ACP_AGENT_PRESET` 读取；新会话绑定并写入 header；未设置保持 host；无 registry/未知/broken 拒绝；resume 重新 mount 持久化 preset | ✅ |
 
 `tests/stubs/` 只服务于打包：测试图里的可选/原生依赖（MCP transport、
 `node-addon-system/flock`）在这里换成最小替身。`flock` 替身在进程内用

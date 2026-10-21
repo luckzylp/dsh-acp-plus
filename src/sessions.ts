@@ -31,6 +31,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import { AcpPlusContentError, admitAcpPrompt } from './content.ts'
 import { turnEndToStopReason } from './codec.ts'
 import { preApprovedEscalation } from './features/additional-directories.ts'
+import { mountAgentPreset } from './features/agent-presets.ts'
 import {
   availableCommands,
   commandDoneUpdate,
@@ -69,6 +70,8 @@ interface AcpPlusSessionBuildOptions {
   mcpServers: readonly McpServer[]
   /** Authorized additional workspace roots from the lifecycle request. */
   additionalDirectories: readonly string[]
+  /** Resolved agent preset for a fresh session, or undefined for the host composition. */
+  agentPreset?: string
   /** How the declared roots are described and routed to the model. */
   workspacePrompt: WorkspacePromptMode
   /** Per-agent route options from deployment config. */
@@ -203,11 +206,17 @@ export class AcpPlusSession {
     let workspaceRoots: readonly WorkspaceRoot[] = []
     const handle = await ctx.agents.create({
       sessionId: options.sessionId,
-      meta: { cwd: options.cwd },
+      meta: {
+        cwd: options.cwd,
+        ...options.agentPreset === undefined ? {} : { agentPreset: options.agentPreset },
+      },
       agentOptions: options.agentOptions,
       signal: options.signal,
       setup: async (agentCtx, agent) => {
         modelControl.install(agentCtx)
+        if (options.agentPreset !== undefined) {
+          await mountAgentPreset(ctx, agentCtx, options.agentPreset)
+        }
         // The declaration is a session-level grant; the sandbox stays at its
         // standing mode and reach is realized per call through escalation.
         // The prompt layer only describes the grant and routes aliases; it
@@ -250,6 +259,10 @@ export class AcpPlusSession {
           selectionFor(agent.session.requestHeader(), options.fallbackSelection),
         )
         modelControl.install(agentCtx)
+        const persistedPreset = agent.session.header.agentPreset
+        if (persistedPreset !== undefined) {
+          await mountAgentPreset(ctx, agentCtx, persistedPreset)
+        }
         workspaceRoots = registerWorkspaceRoots(
           agentCtx,
           agent,

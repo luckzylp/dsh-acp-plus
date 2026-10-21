@@ -34,6 +34,7 @@ presentation 数据塞进 wire；提供 DSH 专属协议扩展（客户端只应
 | M5 | 交互扩展 | elicitation(`ctx.userQuestions`)、commands、modes | ✅ 已落地并测试 |
 | M6 | 发布 | 打包、版本、兼容策略、文档 | 干净环境 `dsh plugin add` 后可直接用 |
 | M7 | steering 扩展 | `_session/steering` 中途注入（zeron / org adapters） | ✅ 已落地并测试 |
+| M8 | Agent preset 选择 | `DSH_ACP_AGENT_PRESET` 环境变量 + preset registry | 新会话绑定 preset；load/resume 恢复；未设置时保持 host 组合 |
 
 依赖顺序：M0 → M1 必须完成才动 M2+（否则增量无法与基线区分）。M3/M4/M5 相互独立，
 可并行。
@@ -347,6 +348,31 @@ agentclientprotocol org adapters，zeron 的 ACP driver 消费：客户端在
 
 ---
 
+### M8 — Agent preset 选择（环境变量）
+
+**范围**：`features/agent-presets.ts` + profile 的 `agent-preset-registry` /
+`agent-preset` 行。ACP 没有标准 preset 字段，Zed 也不发送；Zed 的
+`agent_servers.env` 会传给 `dsh`，因此桥在挂载时读取 `DSH_ACP_AGENT_PRESET`。
+
+**完成记录（2025-10）**：
+
+- ✅ `DSH_ACP_AGENT_PRESET` 只在 `apply()` 读取一次；新会话通过
+  `agentPresets.resolve` 校验，`meta.agentPreset` 记入 durable header，`setup` 调用
+  `agentPresets.mount` 绑定组合。
+- ✅ `session/load` / `session/resume` 以 header 里的 preset 为准重新 mount，不重新读
+  环境；活会话不支持切换 preset（registry 的 `select` 也只允许 blank session）。
+- ✅ 未设置环境变量时完全保持原行为（host 组合）；设置了但 registry 未挂载 / preset
+  不存在 / preset broken 时在 `session/new` 返回 invalid params，而不是静默降级。
+- ✅ profile 提供 `standard`（`plugins: []`，继承 host）作为默认示例；更多 preset 用
+  `@deepseek-ai/dsh-agent-preset` 行声明。
+- ✅ 测试：`tests/agent-presets.test.ts`（env 读取、创建绑定、未设置保持 host、无
+  registry/未知/broken 拒绝、resume 重新 mount）。
+
+**验收**：Zed `agent_servers.env` 设置 `DSH_ACP_AGENT_PRESET=standard` 后新会话使用
+`standard`；不设置则与之前一致；resume 保留原 preset。
+
+---
+
 ## 3. 缺口 → 机制 映射
 
 | ACP 能力 | 接的机制 | 里程碑 |
@@ -427,6 +453,10 @@ agentclientprotocol org adapters，zeron 的 ACP driver 消费：客户端在
   路径。展开放在 per-agent `tools/execute` wrapper（`tools/pre-execute` 明确不可改写
   参数），并且审批 containment 复用同一展开函数；`map`/`off` 模式不注册展开，避免
   提示词与工具行为不一致。见 §2 M3 与 `tests/workspace-roots.test.ts`。
+- [x] D14 Agent preset 通过**进程环境变量**而不是 ACP 字段选择：ACP 没有标准
+  preset 字段，Zed 也不会发送 `_meta`；`agent_servers.env` 是客户端已支持的传参路径。
+  桥只把环境变量当作创建时默认值，durable header 仍是 load/resume 的权威，且未设置时
+  完全保持 host 组合。见 §2 M8。
 - [x] D13 会话控制同时投影为 `modes` 与 `configOptions`：Zed 1.24.x 的
   `config_state()` 在两者并存时丢弃 `modes`，只保留 config options；只发 `modes`
   会让 plan mode 在 Zed 中不可见。桥把 plan mode 投影为 `mode` config option，

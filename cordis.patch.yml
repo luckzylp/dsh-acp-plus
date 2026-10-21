@@ -30,6 +30,23 @@
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
 
+    # Opt-in Agent presets. Set DSH_ACP_AGENT_PRESET in the ACP client's
+    # environment to select one for new sessions; `standard` inherits the host
+    # composition. Add more @deepseek-ai/dsh-agent-preset rows here to define
+    # additional presets.
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
+      config:
+        default: standard
+
+    - id: preset-standard
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: standard
+        name: Standard
+        description: Inherit the host composition.
+        plugins: []
+
     # Publishes `acpPlusStartup` after a successful argument parse, and binds
     # stdin EOF to the launcher's bounded shutdown. `--help` publishes nothing,
     # so the bridge row below waits and stdio stays unclaimed.

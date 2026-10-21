@@ -252,6 +252,14 @@ export interface BridgeClient {
   cancel: NonNullable<AcpAgent['cancel']>
 }
 
+/** Captured agent-preset traffic for preset tests. */
+export interface AgentPresetFixture {
+  /** Preset ids passed to the stub's `resolve`. */
+  resolved: string[]
+  /** Preset ids passed to the stub's `mount`. */
+  mounted: string[]
+}
+
 /** Captured permission-preset traffic for session-option tests. */
 export interface PermissionPresetFixture {
   /** Current preset value the stub reports. */
@@ -270,6 +278,7 @@ export interface BridgeHarness {
   elicitation: ElicitationFixture
   persistenceRoot: string
   permissionPresets: PermissionPresetFixture
+  agentPresets: AgentPresetFixture
   dispose: () => Promise<void>
 }
 
@@ -290,6 +299,11 @@ export async function makeBridgeHarness(options: {
   commands?: boolean
   /** Mount the plan-mode controller for session-mode tests. */
   planMode?: boolean
+  /** Provide an agent-preset registry stub for preset tests. */
+  agentPresets?: boolean | {
+    presets?: Array<{ id: string; name?: string; broken?: string }>
+    default?: string
+  }
   /** Provide a permission-preset service stub for session-option tests. */
   permissionPresets?: boolean | {
     options?: Array<{ value: string; name: string; description?: string }>
@@ -346,6 +360,35 @@ export async function makeBridgeHarness(options: {
   }
   if (options.commands === true) await ctx.plugin(CommandRuntime)
   if (options.planMode === true) await ctx.plugin(PlanModeController, { section: 'Plan mode is active.' })
+  const agentPresetState = options.agentPresets === undefined
+    ? undefined
+    : {
+      presets: (typeof options.agentPresets === 'object' ? options.agentPresets.presets : undefined)
+        ?? [{ id: 'standard' }, { id: 'review' }],
+      default: (typeof options.agentPresets === 'object' ? options.agentPresets.default : undefined) ?? 'standard',
+      resolved: [] as string[],
+      mounted: [] as string[],
+    }
+  if (agentPresetState !== undefined) {
+    ctx.provide('agentPresets', {
+      defaultId: agentPresetState.default,
+      resolve: async (id?: string) => {
+        const wanted = id ?? agentPresetState.default
+        const row = agentPresetState.presets.find(preset => preset.id === wanted)
+        if (row === undefined) throw new Error(`unknown agent preset: ${wanted}`)
+        agentPresetState.resolved.push(wanted)
+        return { id: wanted, ...row.broken === undefined ? {} : { broken: row.broken } }
+      },
+      mount: async (_ctx: Context, id?: string) => {
+        const wanted = id ?? agentPresetState.default
+        const row = agentPresetState.presets.find(preset => preset.id === wanted)
+        if (row === undefined) throw new Error(`unknown agent preset: ${wanted}`)
+        agentPresetState.mounted.push(wanted)
+        return { id: wanted }
+      },
+      list: async () => agentPresetState.presets,
+    } as never)
+  }
   const permissionPresetState = options.permissionPresets === undefined
     ? undefined
     : {
@@ -414,6 +457,10 @@ export async function makeBridgeHarness(options: {
     permissionPresets: {
       current: () => permissionPresetState?.current ?? '',
       setCalls: permissionPresetState?.setCalls ?? [],
+    },
+    agentPresets: {
+      resolved: agentPresetState?.resolved ?? [],
+      mounted: agentPresetState?.mounted ?? [],
     },
     client: undefined as unknown as BridgeClient,
     dispose: async () => {

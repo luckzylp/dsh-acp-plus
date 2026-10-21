@@ -15,6 +15,21 @@
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
 
+    # Opt-in Agent presets; select one with DSH_ACP_AGENT_PRESET. `standard`
+    # inherits the host composition.
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
+      config:
+        default: standard
+
+    - id: preset-standard
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: standard
+        name: Standard
+        description: Inherit the host composition.
+        plugins: []
+
     - id: acp-plus-startup
       name: 'dsh-acp-plus/app'
 

@@ -71,6 +71,7 @@ import {
   authorizeAdditionalDirectories,
 } from './features/additional-directories.ts'
 import { answerWithElicitation, type AcpElicitationHost } from './features/elicitation.ts'
+import { AcpPlusAgentPresetError, agentPresetFromEnvironment, resolveAgentPreset } from './features/agent-presets.ts'
 import { AcpPlusSessionModeError } from './features/modes.ts'
 import { AcpPlusSessionOptionError } from './features/session-options.ts'
 import { replaySession } from './features/session-load.ts'
@@ -130,6 +131,8 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
     return ctx.get('agentDefaultModel')?.currentSelection()
   }
   const logger = ctx.logger
+  // Read once: the Zed `agent_servers.env` value is fixed for this process.
+  const configuredAgentPreset = agentPresetFromEnvironment()
   const sessions = new Map<SessionId, AcpPlusSession>()
   const activating = new Set<SessionId>()
   let closed = false
@@ -341,6 +344,13 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
     async newSession(params: NewSessionRequest, signal: AbortSignal): Promise<NewSessionResponse> {
       assertOpen()
       const additionalDirectories = await authorizeWorkspace(params)
+      let agentPreset: string | undefined
+      try {
+        agentPreset = await resolveAgentPreset(ctx, configuredAgentPreset)
+      } catch (error: unknown) {
+        if (error instanceof AcpPlusAgentPresetError) throw invalidParams(error.message)
+        throw error
+      }
       const sessionId = brandString<SessionId>(randomUUID())
       let record: AcpPlusSession
       try {
@@ -349,6 +359,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
           cwd: params.cwd,
           mcpServers: params.mcpServers,
           additionalDirectories,
+          agentPreset,
           workspacePrompt: spec.features.additionalDirectoriesPrompt,
           agentOptions: agentOptions(spec),
           fallbackSelection: initialSelection(),
@@ -356,7 +367,11 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
           notify,
         })
       } catch (error: unknown) {
-        if (error instanceof AcpPlusMcpConfigError || error instanceof AcpPlusAdditionalDirectoriesError) {
+        if (
+          error instanceof AcpPlusMcpConfigError
+          || error instanceof AcpPlusAdditionalDirectoriesError
+          || error instanceof AcpPlusAgentPresetError
+        ) {
           throw invalidParams(error.message)
         }
         throw error
@@ -453,7 +468,11 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
             notify,
           })
         } catch (error: unknown) {
-          if (error instanceof AcpPlusMcpConfigError || error instanceof AcpPlusAdditionalDirectoriesError) {
+          if (
+            error instanceof AcpPlusMcpConfigError
+            || error instanceof AcpPlusAdditionalDirectoriesError
+            || error instanceof AcpPlusAgentPresetError
+          ) {
             throw invalidParams(error.message)
           }
           throw error
@@ -518,7 +537,11 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
             notify,
           })
         } catch (error: unknown) {
-          if (error instanceof AcpPlusMcpConfigError || error instanceof AcpPlusAdditionalDirectoriesError) {
+          if (
+            error instanceof AcpPlusMcpConfigError
+            || error instanceof AcpPlusAdditionalDirectoriesError
+            || error instanceof AcpPlusAgentPresetError
+          ) {
             throw invalidParams(error.message)
           }
           throw error

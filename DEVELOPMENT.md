@@ -59,9 +59,11 @@ Breaking one of these breaks the bridge in ways that are hard to diagnose.
    harness version (currently `^0.2.1-rc.1`, locked by
    `tests/packaging.test.ts`). A mismatched row is disabled by the plugin
    preflight and needs an explicit `dsh plugin allow-version` exemption.
-6. **`session/new` agents mount no preset.** The ACP bundle keeps model-facing
-   rows in the host layer; a deployment that needs a roster joins a preset
-   itself.
+6. **Agent presets are opt-in.** Without `DSH_ACP_AGENT_PRESET`, `session/new`
+   mounts no preset and keeps the host composition. With it, the bridge records
+   `meta.agentPreset` and calls `agentPresets.mount` in setup; `load`/`resume`
+   re-mount the preset persisted in the session header. The environment is read
+   once at startup, so changing it needs a new ACP process/session.
 
 ## Native parity
 
@@ -78,6 +80,7 @@ Breaking one of these breaks the bridge in ways that are hard to diagnose.
 | `src/features/session-load.ts` | Increment: native has no `session/load` replay |
 | `src/features/additional-directories.ts` | Increment: native rejects `additionalDirectories` |
 | `src/features/workspace-roots.ts` | Increment: multi-root prompt section + `@alias/` expansion |
+| `src/features/agent-presets.ts` | Increment: `DSH_ACP_AGENT_PRESET` preset binding |
 | `src/features/commands.ts`, `modes.ts`, `elicitation.ts` | Increment: commands, modes, elicitation |
 | `src/features/steering.ts` | Increment: `_session/steering` mid-turn injection |
 
