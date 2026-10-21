@@ -105,7 +105,7 @@ paths, and `off` injects nothing.
 From GitHub:
 
 ```sh
-dsh plugin --profile acp-plus add github:AndPuQing/dsh-acp-plus
+dsh plugin --profile acp-plus add github:luckzylp/dsh-acp-plus
 ```
 
 From a local checkout, choose **link** or **copy**.
