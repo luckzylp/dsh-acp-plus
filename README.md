@@ -181,21 +181,23 @@ server settings (`zed: open server settings`, i.e. the remote
       "type": "custom",
       "command": "/bin/sh",
       "args": ["-lc", "exec dsh --profile acp-plus"],
-      "env": {}
+      "env": { "DSH_ACP_AGENT_PRESET": "standard" }
     }
   }
 }
 ```
 
 `sh -lc` picks up the login shell's PATH; an absolute `dsh` path works too.
-Reconnect the remote project and select `dsh-acp-plus` in the agent picker.
+`DSH_ACP_AGENT_PRESET` selects the Agent preset; omit it to keep the profile's
+host composition. Reconnect the remote project and select `dsh-acp-plus` in the
+agent picker.
 The agent panel shows **Model**, **Reasoning effort**, **Mode**, and
 **Permission** when the corresponding services are mounted. The bridge returns
 them in the toolbar order **Permission → Mode → Reasoning effort → Model**.
 `Mode` drives the same plan state as `session/set_mode`, and `Permission`
-drives the same preset as the `/permission` command. Slash commands, `session/load` replay, and
-`ask_user_question` (when the client declares form elicitation) are available;
-client terminals are intentionally unsupported. Logs:
+drives the same preset as the `/permission` command. Slash commands,
+`session/load` replay, and `ask_user_question` (when the client declares form
+elicitation) are available; client terminals are intentionally unsupported. Logs:
 `~/.local/share/zed/logs/server-preview-*.log`.
 
 Zed 1.24.x gives `configOptions` precedence over ACP `modes`: when an agent
@@ -215,6 +217,12 @@ The profile patch configures the bridge row:
 | `enableAdditionalDirectories` | boolean | `false` | Accept `additionalDirectories` with containment-checked pre-approval. |
 | `additionalDirectoriesPrompt` | `routing` / `map` / `off` | `routing` | `routing` lists roots and expands `@alias/` paths; `map` lists roots only (absolute paths); `off` injects nothing. |
 
+The bridge also reads one environment variable:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DSH_ACP_AGENT_PRESET` | unset | Agent preset for new ACP sessions; read once at startup and restored by `load` / `resume`. |
+
 The shipped profile enables both `enableSessionLoad` and
 `enableAdditionalDirectories`.
 
@@ -231,7 +239,7 @@ dsh --profile acp-plus --dump-config
 dsh --profile acp-plus --dump-config-schema
 ```
 
-### Agent presets
+### Agent presets (`DSH_ACP_AGENT_PRESET`)
 
 ACP has no standard agent-preset field, and Zed does not send one. The bridge
 reads `DSH_ACP_AGENT_PRESET` once when the process starts and binds that preset
@@ -248,6 +256,12 @@ to every new ACP session. Pass it through Zed's `agent_servers.env`:
     }
   }
 }
+```
+
+The same value works on the command line:
+
+```sh
+DSH_ACP_AGENT_PRESET=standard dsh --profile acp-plus
 ```
 
 The shipped profile defines a `standard` preset whose `plugins` list is empty,
