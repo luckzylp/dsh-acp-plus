@@ -73,6 +73,7 @@ import {
 import { answerWithElicitation, type AcpElicitationHost } from './features/elicitation.ts'
 import { AcpPlusAgentPresetError, agentPresetFromEnvironment, resolveAgentPreset } from './features/agent-presets.ts'
 import { AcpPlusSessionModeError } from './features/modes.ts'
+import { prefixedSkillMessages } from './features/skill-activation.ts'
 import { AcpPlusSessionOptionError } from './features/session-options.ts'
 import { replaySession } from './features/session-load.ts'
 import {
@@ -214,6 +215,19 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
     const record = sessions.get(agent.session.id)
     return record?.owns(agent) === true ? record : undefined
   }
+
+  // `/skills:<name>` is the namespaced form advertised in the ACP command
+  // list. The skill consumer's own gesture only recognizes bare `/name`, so
+  // this listener injects the same canonical instructions for the prefixed
+  // token while leaving the original user text in the transcript.
+  ctx.on('agent/pre-step', async ({ agent, messages, signal }, next) => {
+    if (ownedRecord(agent) === undefined) return next()
+    const decision = await next()
+    if (decision.kind === 'reject') return decision
+    const injected = await prefixedSkillMessages(ctx, agent, messages, signal)
+    if (injected.length === 0) return decision
+    return { ...decision, messages: [...decision.messages, ...injected] }
+  })
 
   const assertOpen = (): void => {
     if (closed) throw internalError('the ACP bridge has been disposed')

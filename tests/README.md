@@ -20,8 +20,8 @@
 | `session-load.test.ts` | M2 | 跨 harness（模拟进程重启）回放 == 原始序列并可继续 prompt；occupied id 拒绝；resume 不回放；cwd 不匹配拒绝；未开启时不广告也不服务 | ✅ |
 | `parity.test.ts` | M1 | 同一输入下与原生 `@deepseek-ai/dsh-acp` 的 `session/update` 序列逐条相等（归一化随机 messageId）：握手、文本、max-tokens、工具链、取消、错误 | ✅ |
 | `commands.test.ts` | M5 | 命令列表发布/重推；`/name` 拦截执行不产生模型回合；未知斜杠回落模型 | ✅ |
-| `skill-commands.test.ts` | M5 | user-invocable skill 合并进 ACP 命令列表；与命令重名时命令优先；无 commands/skills 服务时退化；发现失败保留命令 | ✅ |
-| `skill-invocation.test.ts` | M5 | skill 出现在 `available_commands_update`；`/name` 仍走模型回合并由 `dsh-tool-skill` 注入 `<skill_content>` | ✅ |
+| `skill-commands.test.ts` | M5 | user-invocable skill 以 `skills:<name>` 合并进 ACP 命令列表；命令保持裸名；无 commands/skills 服务时退化；发现失败保留命令 | ✅ |
+| `skill-invocation.test.ts` | M5 | skill 以 `/skills:<name>` 出现在 `available_commands_update`；前缀形式保留原文并注入 `<skill_content>`；裸 `/name` fallback 仍可用 | ✅ |
 | `modes.test.ts` | M5 | `default`/`plan` 广告、`set_mode` 与 `current_mode_update`、resume 恢复、无 plan-mode 时单模式、沙箱轴不变 | ✅ |
 | `elicitation.test.ts` | M5 | 表单构建/答案映射单测；accept/decline/无能力/中止 e2e | ✅ |
 | `packaging.test.ts` | M6 | 用 harness 的 `evaluatePluginCompatibility` 锁定 preflight 通过、`dsh-*` peer 已固定；manifest/profile 引用齐全 | ✅ |

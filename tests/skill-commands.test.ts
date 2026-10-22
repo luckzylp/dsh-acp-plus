@@ -30,7 +30,8 @@ test('merges user-invocable skills after registered commands', async () => {
 
   assert.deepEqual(await availableCommands(ctx, AGENT as never), [
     { name: 'echo', description: 'Echo the input.', input: { hint: 'text' } },
-    { name: 'code-review', description: 'Review a change.' },
+    { name: 'skills:code-review', description: 'Review a change.' },
+    { name: 'skills:echo', description: 'Duplicate.' },
   ])
 })
 
@@ -42,7 +43,7 @@ test('publishes skills without a command registry and commands without skills', 
     logger: { warn: () => {} },
   } as unknown as Context
   assert.deepEqual(await availableCommands(skillOnly, AGENT as never), [
-    { name: 'tdd', description: 'Test first.' },
+    { name: 'skills:tdd', description: 'Test first.' },
   ])
 
   const commandOnly = {

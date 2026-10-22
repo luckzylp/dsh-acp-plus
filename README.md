@@ -52,8 +52,9 @@ dsh --profile acp-plus
   Models page appear as grouped choices in the ACP model picker instead of only
   offering the DeepSeek route.
 - **Skills as slash commands** — user-invocable skills are published in the
-  client's `/` command list next to registered commands. Selecting one sends
-  `/name`; the skill consumer injects its instructions into that model turn.
+  client's `/` command list under `/skills:<name>`, keeping them distinct from
+  agent commands. Selecting one sends the prefixed name; the bridge injects the
+  skill instructions into that model turn. Bare `/name` remains a fallback.
 
 ## Multi-root workspace (soft support)
 
@@ -363,20 +364,29 @@ the command or skill registry changes, the bridge publishes
 
 1. commands registered on `ctx.commands` (executed by the bridge without a
    model turn), and
-2. every skill whose invocation policy has `userInvocable: true`.
+2. every skill whose invocation policy has `userInvocable: true`, under the
+   `skills:<name>` namespace.
 
 Skills are discovered by the mounted `dsh-skill-filesystem` provider from the
 usual roots — `<project>/.dsh/skills`, `<project>/.agents/skills`,
 `~/.dsh/skills`, and `~/.agents/skills` — so a skill with the default policy
-appears in Zed's `/` menu under its exact kebab-case name. A skill named the
-same as a registered command stays hidden behind that command.
+appears in Zed's `/` menu as `/skills:<name>`. Agent commands keep their bare
+names, so `/compact` and `/skills:code-review` are visibly different. The
+namespace also removes the old same-name collision: a skill named `echo`
+becomes `/skills:echo`, while the command `/echo` still executes locally.
 
-Selecting a skill sends `/name` as an ordinary prompt. The bridge deliberately
-does **not** execute it as a command: it falls through to the Agent, where
-`dsh-tool-skill`'s `/name` gesture injects the skill body as
-`<skill_content>` for that step. Skills with `user-invocable: false` are not
-advertised; `disable-model-invocation: true` keeps a skill out of the model
-catalog but still allows this explicit user path.
+Selecting the prefixed entry sends `/skills:<name> [args]` as an ordinary
+prompt. The bridge does **not** execute it as a command; a pre-step listener
+loads the skill through `ctx.skills.get()` and appends the canonical
+`<skill_content>` context (`source: skill-invocation`) to that step, leaving
+the original user text in the transcript. The bare `/name` form continues to
+work as a shorthand for direct typing, but is not advertised in the menu. A
+skill whose name is taken by an agent command still works only through its
+`/skills:` entry.
+
+Skills with `user-invocable: false` are not advertised; `disable-model-
+invocation: true` keeps a skill out of the model catalog but still allows this
+explicit user path.
 
 ## Relationship to the native bridge
 
