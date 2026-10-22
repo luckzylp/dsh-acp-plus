@@ -24,21 +24,49 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 /** Cached `parseCommand` from the command registry, loaded on first use. */
 let parseCommand: ((line: string) => { name: string; rawInput: string } | undefined) | undefined
 
+/** Minimal shape of the optional skill registry used for user-facing commands. */
+interface UserSkillCatalog {
+  list(options: { cwd?: string; scope?: unknown }): Promise<ReadonlyArray<{
+    name: string
+    description: string
+    invocation: { userInvocable: boolean }
+  }>>
+}
+
 /**
- * The registry's advertised commands for one agent, or an empty list when no
- * command registry is mounted.
- * @param ctx - plugin context carrying the optional command registry.
+ * The registry's advertised commands plus user-invocable skills for one agent.
+ *
+ * ACP has one user-facing command list, so skills are projected into it under
+ * their exact kebab-case name. A skill command is advertised only; invoking it
+ * stays an ordinary model prompt (the skill consumer's `/name` gesture injects
+ * the instructions), which is why this function must not turn it into a
+ * registered-command execution.
+ * @param ctx - plugin context carrying the optional command and skill registries.
  * @param agent - exact receiving agent whose scoped command view is read.
- * @returns ACP command descriptors in registry order.
+ * @returns ACP command descriptors in registry order, then skills by name.
  */
-export function availableCommands(ctx: Context, agent: Agent): AvailableCommand[] {
+export async function availableCommands(ctx: Context, agent: Agent): Promise<AvailableCommand[]> {
   const commands = ctx.get('commands')
-  if (commands === undefined) return []
-  return commands.list(agent).map(descriptor => ({
-    name: descriptor.name,
-    description: descriptor.description,
-    ...descriptor.input === undefined ? {} : { input: { hint: descriptor.input.hint } },
-  }))
+  const available: AvailableCommand[] = commands === undefined
+    ? []
+    : commands.list(agent).map(descriptor => ({
+        name: descriptor.name,
+        description: descriptor.description,
+        ...descriptor.input === undefined ? {} : { input: { hint: descriptor.input.hint } },
+      }))
+  const skills = ctx.get('skills' as never) as UserSkillCatalog | undefined
+  if (skills === undefined) return available
+  try {
+    const catalog = await skills.list({ cwd: agent.session.header.cwd, scope: agent })
+    for (const skill of catalog) {
+      if (!skill.invocation.userInvocable) continue
+      if (available.some(command => command.name === skill.name)) continue
+      available.push({ name: skill.name, description: skill.description })
+    }
+  } catch (error: unknown) {
+    ctx.logger.warn(`acp-plus: skill command discovery failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  return available
 }
 
 /**

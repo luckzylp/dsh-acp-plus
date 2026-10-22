@@ -251,7 +251,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
 
   /** Publish the command list once the lifecycle response has been written. */
   const publishCommandsAfterResponse = (record: AcpPlusSession): void => {
-    const timer = setTimeout(() => { record.publishCommands() }, 0)
+    const timer = setTimeout(() => { void record.publishCommands() }, 0)
     timer.unref?.()
   }
 
@@ -265,7 +265,14 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
   })
 
   ctx.on('commands/change', () => {
-    for (const record of sessions.values()) record.publishCommands()
+    for (const record of sessions.values()) void record.publishCommands()
+  })
+
+  // User-invocable skills are part of the same ACP command list; a discovery
+  // invalidation should refresh the client's `/` picker just like a command
+  // registration does.
+  ctx.on('skills/change' as never, () => {
+    for (const record of sessions.values()) void record.publishCommands()
   })
 
   ctx.on('session/event', (session, event) => {

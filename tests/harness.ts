@@ -61,6 +61,8 @@ import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
+import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import WorkingDirectoryService from '@deepseek-ai/dsh-working-directory'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import * as AcpPlugin from '../src/index.ts'
@@ -297,6 +299,8 @@ export async function makeBridgeHarness(options: {
   filesystemTools?: boolean
   /** Mount the command registry for slash-command tests. */
   commands?: boolean
+  /** Mount the skill registry and its model-facing catalog/tool for skill tests. */
+  skills?: boolean
   /** Mount the plan-mode controller for session-mode tests. */
   planMode?: boolean
   /** Provide an agent-preset registry stub for preset tests. */
@@ -359,6 +363,11 @@ export async function makeBridgeHarness(options: {
     await ctx.plugin(ToolFs as unknown as Parameters<Context['plugin']>[0], {})
   }
   if (options.commands === true) await ctx.plugin(CommandRuntime)
+  if (options.skills === true) {
+    await ctx.plugin(SkillRegistry)
+    if (options.filesystemTools !== true) await ctx.plugin(WorkingDirectoryService)
+    await ctx.plugin(ToolSkill as unknown as Parameters<Context['plugin']>[0])
+  }
   if (options.planMode === true) await ctx.plugin(PlanModeController, { section: 'Plan mode is active.' })
   const agentPresetState = options.agentPresets === undefined
     ? undefined

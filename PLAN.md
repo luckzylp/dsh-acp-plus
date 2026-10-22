@@ -263,6 +263,13 @@ agent 可达面，必须：
   `ctx.commands.find(agent, name)`，直接走 `ctx.commands.execute`，不产生模型回合，
   返回 `end_turn`；`command/run`/`command/done` 事件投影成 `user_message_chunk`/
   `agent_message_chunk`，回放与实时一致。未命中或含非文本块的 `/...` 仍走模型。
+- ✅ **skills 作为命令暴露**（`features/commands.ts`）：ACP 只有一份面向用户的
+  command 列表，所以 `availableCommands` 把 `ctx.skills.list()` 中
+  `userInvocable: true` 的 skill 追加到已注册命令之后（同名时命令优先）；
+  `skills/change` 与 `commands/change` 一样触发重推。调用时不走
+  `ctx.commands.execute`——`/name` 仍是普通模型 prompt，由 `dsh-tool-skill`
+  的 `/name` gesture 注入 `<skill_content>`，因此 `disable-model-invocation`
+  的 skill 仍然可被用户显式调用。
 - ✅ **modes**（`features/modes.ts`）：挂载 plan-mode 时 session 响应带
   `modes`（`default`/`plan`），未挂载时完全省略 `modes`（响应与原生逐字段一致，
   `set_mode` 拒绝一切非 default）；`session/set_mode` → `ctx.planMode.set`，
@@ -462,3 +469,8 @@ agentclientprotocol org adapters，zeron 的 ACP driver 消费：客户端在
   会让 plan mode 在 Zed 中不可见。桥把 plan mode 投影为 `mode` config option，
   把 permission presets 投影为 `permission` config option，同时保留 `modes` 给使用
   该字段的客户端。两条路径指向同一 DSH 服务，不复制状态。见 §2 M5。
+- [x] D15 skill 复用 ACP command 列表而不是新增 `/skill` 子命令：Zed 的 `/`
+  菜单只读 `available_commands_update`，而 DSH 的显式 skill 语法本来就是
+  `/name`。桥只负责把 user-invocable skill 广告出去，注入仍由
+  `dsh-tool-skill` 的唯一 gesture 入口完成，避免桥与 skill consumer 各自解析
+  一套语法。见 §2 M5。

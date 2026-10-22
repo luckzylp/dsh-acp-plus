@@ -51,6 +51,9 @@ dsh --profile acp-plus
   desktop profile at startup, so third-party models configured in the desktop
   Models page appear as grouped choices in the ACP model picker instead of only
   offering the DeepSeek route.
+- **Skills as slash commands** — user-invocable skills are published in the
+  client's `/` command list next to registered commands. Selecting one sends
+  `/name`; the skill consumer injects its instructions into that model turn.
 
 ## Multi-root workspace (soft support)
 
@@ -351,6 +354,29 @@ an empty catalog, so its group is omitted from the picker even though the route
 is registered. If a provider you configured is missing, check the credential
 reference and that the process running the ACP agent can read
 `$DSH_HOME/.credentials.yaml`.
+
+### Skills and slash commands
+
+The ACP command list is also the skill picker. At session start, and whenever
+the command or skill registry changes, the bridge publishes
+`available_commands_update` with two sources:
+
+1. commands registered on `ctx.commands` (executed by the bridge without a
+   model turn), and
+2. every skill whose invocation policy has `userInvocable: true`.
+
+Skills are discovered by the mounted `dsh-skill-filesystem` provider from the
+usual roots — `<project>/.dsh/skills`, `<project>/.agents/skills`,
+`~/.dsh/skills`, and `~/.agents/skills` — so a skill with the default policy
+appears in Zed's `/` menu under its exact kebab-case name. A skill named the
+same as a registered command stays hidden behind that command.
+
+Selecting a skill sends `/name` as an ordinary prompt. The bridge deliberately
+does **not** execute it as a command: it falls through to the Agent, where
+`dsh-tool-skill`'s `/name` gesture injects the skill body as
+`<skill_content>` for that step. Skills with `user-invocable: false` are not
+advertised; `disable-model-invocation: true` keeps a skill out of the model
+catalog but still allows this explicit user path.
 
 ## Relationship to the native bridge
 

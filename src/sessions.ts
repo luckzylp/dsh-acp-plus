@@ -330,14 +330,18 @@ export class AcpPlusSession {
     return this.configOptions(signal)
   }
 
-  /** Publish the current command list to this session's client. */
-  publishCommands(): void {
-    if (this.ctx.get('commands') === undefined) return
-    const availableCommandsForAgent = availableCommands(this.ctx, this.agent)
-    this.enqueue(() => this.notify({
-      sessionId: this.agent.session.id,
-      update: { sessionUpdate: 'available_commands_update', availableCommands: availableCommandsForAgent },
-    }))
+  /** Publish the current command and skill list to this session's client. */
+  async publishCommands(): Promise<void> {
+    if (this.ctx.get('commands') === undefined && this.ctx.get('skills' as never) === undefined) return
+    try {
+      const availableCommandsForAgent = await availableCommands(this.ctx, this.agent)
+      this.enqueue(() => this.notify({
+        sessionId: this.agent.session.id,
+        update: { sessionUpdate: 'available_commands_update', availableCommands: availableCommandsForAgent },
+      }))
+    } catch (error: unknown) {
+      this.ctx.logger.warn(`acp-plus: command publication failed: ${errorChain(error)}`)
+    }
   }
 
   /**
