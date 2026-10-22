@@ -388,6 +388,16 @@ Skills with `user-invocable: false` are not advertised; `disable-model-
 invocation: true` keeps a skill out of the model catalog but still allows this
 explicit user path.
 
+### Context usage
+
+The bridge publishes an ACP `usage_update` whenever context occupancy can
+change: after an assistant message that carries provider usage, after every
+turn ends, and after a command such as `/compact` settles. `used` is the
+token-meter measurement of the durable session, so a compaction replacement is
+reflected immediately; `size` is the current route's context window. Identical
+consecutive readings are suppressed, and `session/load` publishes one final
+reading after replay.
+
 ## Relationship to the native bridge
 
 The shipped `@deepseek-ai/dsh-acp` is automation-only by design. This project

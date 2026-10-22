@@ -54,7 +54,7 @@ import {
 } from './features/workspace-roots.ts'
 import { mountAcpMcpServers } from './mcp.ts'
 import { AcpPlusModelControl } from './model-control.ts'
-import { assistantUpdates, toolCallUpdate, toolResultUpdate } from './updates.ts'
+import { assistantUpdates, toolCallUpdate, toolResultUpdate, usageUpdate } from './updates.ts'
 
 /** The subagent teardown used without depending on the subagent package. */
 interface SubagentDrain {
@@ -161,6 +161,8 @@ export class AcpPlusSession {
   readonly agent: Agent
   private readonly modelControl: AcpPlusModelControl
   private outputTail = Promise.resolve()
+  /** Last published usage reading, so periodic refreshes do not spam the client. */
+  private lastUsageSnapshot: string | undefined
   private inflight: InflightPrompt | undefined
   private closing: Promise<void> | undefined
   /** One config-option snapshot is in flight; later changes coalesce into another. */
@@ -554,9 +556,16 @@ export class AcpPlusSession {
     try {
       if (event.type === 'assistant/message') {
         const inflight = this.inflight?.turn === event.data.turn ? this.inflight : undefined
+        // Mark the reading this message is about to publish before turn/end can
+        // enqueue the same final sample a second time.
+        if (event.data.usage !== undefined) {
+          const usage = usageUpdate(this.ctx, session)
+          if (usage !== undefined) this.lastUsageSnapshot = JSON.stringify(usage)
+        }
         const previous = this.outputTail
         const delivery = previous.then(async () => {
           for (const update of await assistantUpdates(this.ctx, session, event)) {
+            if (update.sessionUpdate === 'usage_update') this.lastUsageSnapshot = JSON.stringify(update)
             await this.notify({ sessionId: this.agent.session.id, update })
           }
         })
@@ -579,6 +588,9 @@ export class AcpPlusSession {
         if (update !== undefined) {
           this.enqueue(() => this.notify({ sessionId: this.agent.session.id, update }))
         }
+        // `/compact` changes context occupancy without an assistant usage
+        // sample; refresh the meter after the command settles.
+        this.publishUsage()
       } else if (event.type === 'plan/mode') {
         this.enqueue(() => this.notify({
           sessionId: this.agent.session.id,
@@ -600,8 +612,29 @@ export class AcpPlusSession {
       if (inflight !== undefined && event.type === 'turn/end' && inflight.turn === event.data.turn) {
         inflight.endReason = event.data.reason
       }
-      if (event.type === 'turn/end') this.modelControl.releaseTurn(event.data.turn)
+      if (event.type === 'turn/end') {
+        this.modelControl.releaseTurn(event.data.turn)
+        // Every turn has a final measurable envelope, including turns whose
+        // assistant message carried no provider usage sample.
+        this.publishUsage()
+      }
     }
+  }
+
+  /**
+   * Publish the current context reading after events that can change it but
+   * carry no assistant usage sample (notably manual or automatic compaction).
+   * Identical consecutive readings are suppressed; the client keeps its last
+   * value instead of receiving a redundant update.
+   */
+  publishUsage(): void {
+    if (this.closing !== undefined) return
+    const update = usageUpdate(this.ctx, this.agent.session)
+    if (update === undefined) return
+    const snapshot = JSON.stringify(update)
+    if (snapshot === this.lastUsageSnapshot) return
+    this.lastUsageSnapshot = snapshot
+    this.enqueue(() => this.notify({ sessionId: this.agent.session.id, update }))
   }
 
   /**

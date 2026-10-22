@@ -15,6 +15,7 @@
 | `codec.test.ts` | M0 | turn ending → `StopReason` 纯函数映射 | ✅ |
 | `content.test.ts` | M0–M1 | 富内容准入、图片校验/重读、resource link 文本化 | ✅ |
 | `updates.test.ts` | M0 | committed event → `session/update`（reasoning/usage/tool 结果） | ✅ |
+| `usage.test.ts` | M1 | 无 provider usage 的 turn 结束后仍发布当前 context 读数，避免 compact 后状态陈旧 | ✅ |
 | `model-control.test.ts` | M0–M1 | 目录投影、空目录过滤、route 校验、pin/release | ✅ |
 | `bridge.test.ts` | M0 | 官方 SDK `ClientSideConnection` + 内存流 + 脚本 adapter：握手、图片能力广告、一轮 prompt、取消、内容拒绝、close、cursor 分页、quiesce | ✅ |
 | `session-load.test.ts` | M2 | 跨 harness（模拟进程重启）回放 == 原始序列并可继续 prompt；occupied id 拒绝；resume 不回放；cwd 不匹配拒绝；未开启时不广告也不服务 | ✅ |

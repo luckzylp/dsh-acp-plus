@@ -132,6 +132,10 @@ max-tokens、reasoning + tool 生命周期 + usage + 收尾文本、cancel 中�
    `usage_update`；发布前 id 不在 `sessions` 里，并发 prompt 无法与回放交错。
 4. ✅ `initialize` 仅在 `enableSessionLoad` 为真时广告 `loadSession: true`；
    `sessionCapabilities.resume` 从此始终广告（handler 已实现）。
+5. ✅ `usage_update` 不再只挂在 assistant message 的 provider usage 上：
+   每个 `turn/end` 与 `command/done`（含 `/compact`）后都重新调用
+   `tokenMeter.measure()` 发布当前读数；相同读数去重，避免客户端重复刷新。
+   assistant 自带的 usage 样本仍优先随消息发布，随后 turn/end 只补差异。
 
 **决策记录（D6）**：回放不重放历史 `usage_update`。它是「当前 context 压力」而非
 转录事实，只有折叠完整日志的 live 度量才有意义；loader 在历史之后发布一次最终读数。
