@@ -2,16 +2,26 @@
  * Standard model/reasoning config-option projection (PLAN.md M0–M1).
  *
  * Behavior ported from `packages/acp/acp/tests/model-control.spec.ts`: the
- * catalog is advisory, the exact route is validated before publication, and a
- * pinned turn owns the route until its own `turn/end`.
+ * catalog is advisory, the exact route is validated before publication, and
+ * the Agent owns the selection the control projects.
  */
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import type { Model, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId, type LlmRuntime } from '@deepseek-ai/dsh-llm'
 import { AcpPlusModelControl } from '../src/model-control.ts'
 
 type Selection = { provider?: string; model?: string; reasoningEffort?: string }
+
+/** Agent-owned selection double: only `select` mutates what `current` reads. */
+function agentModel(initial?: ModelSelection): Model {
+  let current = initial === undefined ? undefined : { ...initial }
+  return {
+    current: () => current,
+    select: (selection: ModelSelection) => { current = { ...selection } },
+  } as unknown as Model
+}
 
 /** Minimal LLM catalog/runtime double for pure standard-option tests. */
 function llmRuntime(overrides: Partial<LlmRuntime> = {}): LlmRuntime {
@@ -42,27 +52,26 @@ function llmRuntime(overrides: Partial<LlmRuntime> = {}): LlmRuntime {
 }
 
 test('represents an absent route and validates value types before mutation', async () => {
-  const control = new AcpPlusModelControl(llmRuntime(), undefined)
+  const model = agentModel()
+  const control = new AcpPlusModelControl(llmRuntime(), model)
 
   assert.equal(control.snapshot(), undefined)
   assert.deepEqual(await control.options(), [])
   await assert.rejects(control.set('model', false), /requires a select value/)
   await assert.rejects(control.set('model', 'missing'), /no model selection/)
 
-  control.selection.current = { provider: 'mock', model: 'mock' }
-  assert.deepEqual(control.selection.current, { provider: 'mock', model: 'mock' })
+  model.select({ provider: 'mock', model: 'mock' })
+  assert.deepEqual(control.snapshot(), { provider: 'mock', model: 'mock' })
 })
 
 test('synthesizes an unlisted current route and exposes reasoning descriptions', async () => {
-  const control = new AcpPlusModelControl(llmRuntime({ listProviders: () => [] }), {
-    provider: 'private',
-    model: 'unlisted',
-  })
+  const model = agentModel({ provider: 'private', model: 'unlisted' })
+  const control = new AcpPlusModelControl(llmRuntime({ listProviders: () => [] }), model)
 
   const options = await control.options()
-  const model = options.find(option => option.id === 'model')
+  const modelOption = options.find(option => option.id === 'model')
   const reasoning = options.find(option => option.id === 'reasoning_effort')
-  assert.deepEqual(model, {
+  assert.deepEqual(modelOption, {
     id: 'model',
     name: 'Model',
     category: 'model',
@@ -82,19 +91,14 @@ test('synthesizes an unlisted current route and exposes reasoning descriptions',
     ],
   })
 
-  control.pinTurn(3, { provider: 'turn', model: 'pinned' })
-  assert.deepEqual(control.selection.current, { provider: 'turn', model: 'pinned' })
-  control.releaseTurn(2)
-  assert.deepEqual(control.selection.current, { provider: 'turn', model: 'pinned' })
-  control.releaseTurn(3)
-  assert.deepEqual(control.selection.current, { provider: 'private', model: 'unlisted' })
+  assert.deepEqual(control.snapshot(), { provider: 'private', model: 'unlisted' })
 })
 
 test('keeps the selected route when its provider catalog is temporarily unavailable', async () => {
   let listed = 0
   const control = new AcpPlusModelControl(llmRuntime({
     listModels: () => { listed += 1; return Promise.reject(new Error('catalog unavailable')) },
-  }), { provider: 'mock', model: 'mock' })
+  }), agentModel({ provider: 'mock', model: 'mock' }))
 
   const options = await control.options()
 
@@ -110,7 +114,7 @@ test('keeps the selected route when its provider catalog is temporarily unavaila
 })
 
 test('rejects an unadvertised reasoning effort and accepts a later valid change', async () => {
-  const control = new AcpPlusModelControl(llmRuntime(), { provider: 'mock', model: 'mock' })
+  const control = new AcpPlusModelControl(llmRuntime(), agentModel({ provider: 'mock', model: 'mock' }))
 
   await assert.rejects(control.set('reasoning_effort', 'extreme'), /unknown reasoning effort/)
   const options = await control.set('reasoning_effort', 'low')
@@ -139,7 +143,8 @@ test('exposes and restores a provider-owned reasoning default', async () => {
       },
     }),
   })
-  const control = new AcpPlusModelControl(runtime, { provider: 'mock', model: 'mock' })
+  const model = agentModel({ provider: 'mock', model: 'mock' })
+  const control = new AcpPlusModelControl(runtime, model)
 
   const initial = await control.options()
   assert.deepEqual(initial.find(option => option.id === 'reasoning_effort'), {
@@ -158,7 +163,7 @@ test('exposes and restores a provider-owned reasoning default', async () => {
   const restored = await control.set('reasoning_effort', '')
 
   assert.equal(restored.find(option => option.id === 'reasoning_effort')?.currentValue, '')
-  assert.deepEqual(control.selection.current, { provider: 'mock', model: 'mock' })
+  assert.deepEqual(model.current(), { provider: 'mock', model: 'mock' })
 })
 
 test('groups the model option by provider and switches across groups', async () => {
@@ -183,10 +188,10 @@ test('groups the model option by provider and switches across groups', async () 
       name: model,
     }),
   })
-  const control = new AcpPlusModelControl(runtime, { provider: 'alpha', model: 'a1' })
+  const control = new AcpPlusModelControl(runtime, agentModel({ provider: 'alpha', model: 'a1' }))
 
-  const [model] = await control.options()
-  assert.deepEqual(model, {
+  const [modelOption] = await control.options()
+  assert.deepEqual(modelOption, {
     id: 'model',
     name: 'Model',
     category: 'model',

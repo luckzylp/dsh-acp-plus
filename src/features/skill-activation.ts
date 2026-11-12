@@ -14,6 +14,8 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+// Type-only: declaration-merges the `skill-invocation` message source kind.
+import type {} from '@deepseek-ai/dsh-skill'
 
 /** Prefix that separates skill commands from agent commands in the `/` menu. */
 export const SKILL_COMMAND_PREFIX = 'skills:'

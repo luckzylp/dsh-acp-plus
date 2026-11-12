@@ -7,7 +7,9 @@
  * starting from a different composition would otherwise show only its own
  * routes. This row reads the named profiles' `llm-pi-ai` blocks at startup and
  * applies their providers to the mounted adapter, without copying secrets or
- * touching the ACP profile's on-disk configuration.
+ * touching the ACP profile's on-disk configuration. The same sources also
+ * supply their `agent-default-model` route, so the ACP default follows the
+ * model configuration of the profile that owns it.
  *
  * @module dsh-acp-plus/providers
  */
@@ -17,10 +19,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { parse } from 'yaml'
 import {
+  extractDefaultSelection,
   extractProviderProfiles,
   isRecord,
   normalizeSources,
   providerSourcePath,
+  type DefaultSelection,
   type ProviderProfiles,
 } from './provider-profiles.ts'
 
@@ -36,6 +40,11 @@ export const ACP_PLUS_PROVIDERS_SERVICE = 'acpPlusProviders'
 /** Readiness state published even while the provider import is still running. */
 export interface AcpPlusProvidersState {
   ready: Promise<void>
+  /**
+   * Deployment default route imported from the sources (later sources win),
+   * or undefined when none of them configures `agent-default-model`.
+   */
+  defaultSelection?: DefaultSelection
 }
 
 /** Deployment configuration for provider import. */
@@ -69,18 +78,26 @@ interface LoaderLike {
 
 /** Start the import and publish its readiness before any session is served. */
 export function apply(ctx: Context, config: AcpPlusProvidersConfig): void {
-  const ready = importProviders(ctx, config)
-  ctx.provide(ACP_PLUS_PROVIDERS_SERVICE, { ready } satisfies AcpPlusProvidersState)
+  const state: AcpPlusProvidersState = { ready: Promise.resolve() }
+  ctx.provide(ACP_PLUS_PROVIDERS_SERVICE, state)
+  state.ready = importProviders(ctx, config, state)
 }
 
 /** Read configured provider routes and activate them on the mounted adapter. */
-async function importProviders(ctx: Context, config: AcpPlusProvidersConfig): Promise<void> {
+async function importProviders(
+  ctx: Context,
+  config: AcpPlusProvidersConfig,
+  state: AcpPlusProvidersState,
+): Promise<void> {
   const explicit = isRecord(config.providers) ? config.providers : {}
   const imported: ProviderProfiles = {}
+  let defaultSelection: DefaultSelection | undefined
   for (const source of normalizeSources(config.from)) {
     const file = providerSourcePath(source)
     try {
       const document: unknown = parse(readFileSync(file, 'utf8'))
+      const selection = extractDefaultSelection(document)
+      if (selection !== undefined) defaultSelection = selection
       const providers = extractProviderProfiles(document)
       if (Object.keys(providers).length === 0) {
         ctx.logger.warn(`acp-plus-providers: no llm-pi-ai providers in ${file}`)
@@ -91,6 +108,9 @@ async function importProviders(ctx: Context, config: AcpPlusProvidersConfig): Pr
       ctx.logger.warn(`acp-plus-providers: cannot read ${file}: ${String(error)}`)
     }
   }
+  // Publish the route even when a source defines no providers: the bridge's
+  // readiness gate is also where its default selection settles.
+  state.defaultSelection = defaultSelection
   const providers: ProviderProfiles = { ...imported, ...explicit }
   if (Object.keys(providers).length === 0) return
 

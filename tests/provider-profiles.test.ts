@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  extractDefaultSelection,
   extractProviderProfiles,
   normalizeSources,
   providerSourcePath,
@@ -47,6 +48,34 @@ test('returns an empty map for documents without provider routes', () => {
   assert.deepEqual(extractProviderProfiles([]), {})
   assert.deepEqual(extractProviderProfiles({ id: 'llm-pi-ai', config: {} }), {})
   assert.deepEqual(extractProviderProfiles(undefined), {})
+})
+
+test('extracts the agent-default-model route from a profile patch list', () => {
+  const document = [
+    {
+      id: 'agent-default-model',
+      name: '@deepseek-ai/dsh-agent-default-model',
+      config: { provider: 'web-gateway', model: 'web-model', reasoningEffort: 'high' },
+    },
+    { id: 'llm-pi-ai', config: { providers: {} } },
+  ]
+
+  assert.deepEqual(extractDefaultSelection(document), {
+    provider: 'web-gateway',
+    model: 'web-model',
+    reasoningEffort: 'high',
+  })
+})
+
+test('extracts a settings.yaml default-model section and rejects partial rows', () => {
+  assert.deepEqual(
+    extractDefaultSelection({ 'agent-default-model': { provider: 'p', model: 'm' } }),
+    { provider: 'p', model: 'm' },
+  )
+  assert.equal(extractDefaultSelection([{ id: 'agent-default-model', config: { provider: 'p' } }]), undefined)
+  assert.equal(extractDefaultSelection([{ id: 'agent-default-model', config: { provider: '', model: 'm' } }]), undefined)
+  assert.equal(extractDefaultSelection([]), undefined)
+  assert.equal(extractDefaultSelection(undefined), undefined)
 })
 
 test('normalizes and resolves profile and file sources', () => {

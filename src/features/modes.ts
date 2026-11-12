@@ -63,7 +63,12 @@ export function availableSessionModes(ctx: Context): readonly SessionMode[] {
  * @returns whether plan mode is active.
  */
 export function planModeActive(ctx: Context, session: Session): boolean {
-  return ctx.get('sessionProjections')?.stateOf(session, 'plan')?.active === true
+  // 0.2.2 types `SessionProjectionRegistry.stateOf(session, key)` as `unknown`
+  // (deprecated in favor of a registered handle); the folded value is unchanged.
+  const state = ctx.get('sessionProjections')?.stateOf(session, 'plan') as
+    | { active?: boolean }
+    | undefined
+  return state?.active === true
 }
 
 /**

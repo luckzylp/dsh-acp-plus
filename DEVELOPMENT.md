@@ -37,7 +37,9 @@ module.
 │   ├── codec.ts                  # turn ending -> StopReason (pure)
 │   ├── content.ts                # prompt admission + assistant block -> ACP content
 │   ├── mcp.ts                    # standard mcpServers -> agent-scoped MCP clients
-│   ├── model-control.ts          # ctx.llm catalog -> ACP config options (route pinning)
+│   ├── model-control.ts          # ctx.llm catalog -> ACP config options (agent-owned selection)
+│   ├── providers.ts              # import another profile's llm-pi-ai routes + default model
+│   ├── provider-profiles.ts      # pure readers for those profile patches
 │   ├── updates.ts                # session/event -> session/update projection
 │   └── features/                 # one module per gap closed vs native
 └── tests/                        # test strategy in tests/README.md
@@ -56,7 +58,7 @@ Breaking one of these breaks the bridge in ways that are hard to diagnose.
 4. **HMR stays off.** Hot reload over a stdio connection breaks the protocol
    stream; `cordis.patch.yml` disables it.
 5. **Peer versions.** Every `@deepseek-ai/dsh-*` peer must match the running
-   harness version (currently `^0.2.1-rc.1`, locked by
+   harness version (currently `^0.2.2-rc.1`, locked by
    `tests/packaging.test.ts`). A mismatched row is disabled by the plugin
    preflight and needs an explicit `dsh plugin allow-version` exemption.
 6. **Agent presets are opt-in.** Without `DSH_ACP_AGENT_PRESET`, `session/new`
@@ -74,7 +76,7 @@ Breaking one of these breaks the bridge in ways that are hard to diagnose.
 | `src/codec.ts` | `codec.ts` — turn ending to `StopReason` |
 | `src/content.ts` | `content.ts` — admission, image validation/re-read, resource-link text |
 | `src/mcp.ts` | `mcp.ts` — stdio / streamable-HTTP validation and mounting |
-| `src/model-control.ts` | `model-control.ts` — catalog to config options + route pinning |
+| `src/model-control.ts` | `model-control.ts` — catalog to config options over `agent.model` |
 | `src/updates.ts` | `updates.ts` — committed block to `session/update` (with usage) |
 | `src/app.ts` | `packages/bundle/acp-app/src/index.ts` |
 | `src/features/session-load.ts` | Increment: native has no `session/load` replay |

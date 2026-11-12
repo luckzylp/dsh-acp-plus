@@ -20,7 +20,7 @@ import { isAbsolute, resolve } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { errorChain } from '@deepseek-ai/dsh-llm'
+import { ReasoningEffortId, errorChain } from '@deepseek-ai/dsh-llm'
 import type { AgentOptions, ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 // Side-effect type import: declaration-merges the deployment default-model service.
@@ -86,6 +86,7 @@ import {
 } from './features/steering.ts'
 import { AcpPlusMcpConfigError } from './mcp.ts'
 import { AcpPlusModelConfigError } from './model-control.ts'
+import type { DefaultSelection } from './provider-profiles.ts'
 import { AcpPlusSession } from './sessions.ts'
 import { usageUpdate } from './updates.ts'
 
@@ -121,25 +122,62 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
   const persistence = ctx.sessionPersistence
 
   /**
+   * The optional provider-import row: readiness plus the default route it read
+   * from the configured source profiles (e.g. `web`).
+   */
+  const providerImport = ():
+    | { ready?: Promise<void>; defaultSelection?: DefaultSelection }
+    | undefined => ctx.get('acpPlusProviders' as never) as
+    | { ready?: Promise<void>; defaultSelection?: DefaultSelection }
+    | undefined
+
+  /**
    * Effective initial route for a new or restored session: the deployment's
-   * explicit provider/model, or the live `agent-default-model` service — the
-   * same default the Web Models page writes — so a profile configures models
-   * once and every entry point, this bridge included, follows. Absent when a
-   * listener (embedded use) supplies the route instead.
+   * explicit provider/model, then the `agent-default-model` imported from the
+   * configured source profiles (the Web Models page owns that route), then the
+   * running composition's own `agent-default-model`. A profile therefore
+   * configures models once and every entry point, this bridge included,
+   * follows. Absent when no source supplies a route.
    */
   const initialSelection = (): ModelSelection | undefined => {
     if (spec.selection !== undefined) return { ...spec.selection }
+    const imported = providerImport()?.defaultSelection
+    if (imported !== undefined) {
+      return {
+        provider: imported.provider,
+        model: imported.model,
+        ...imported.reasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: ReasoningEffortId(imported.reasoningEffort) },
+      }
+    }
     return ctx.get('agentDefaultModel')?.currentSelection()
+  }
+  /**
+   * Route options for one Agent. The selection must reach
+   * `AgentOptions.provider`/`model`: the Agent loop reads its route from the
+   * Session's recorded selection and these options, so handing it to the
+   * bridge's model control alone leaves the first step without a route.
+   */
+  const sessionAgentOptions = (): AgentOptions => {
+    const configured = agentOptions(spec)
+    const selection = initialSelection()
+    if (selection === undefined) return configured
+    return {
+      ...configured,
+      provider: selection.provider,
+      model: selection.model,
+      ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+    }
   }
   const logger = ctx.logger
   /**
-   * Wait for the optional desktop-provider import before a session snapshots
-   * its config options. The row publishes a readiness promise immediately; when
-   * it is not mounted this is a no-op.
+   * Wait for the optional provider/default-model import before a session
+   * snapshots its route. The row publishes a readiness promise immediately;
+   * when it is not mounted this is a no-op.
    */
   const awaitProviderRoutes = async (): Promise<void> => {
-    const gate = ctx.get('acpPlusProviders' as never) as { ready?: Promise<void> } | undefined
-    await gate?.ready
+    await providerImport()?.ready
   }
   // Read once: the Zed `agent_servers.env` value is fixed for this process.
   const configuredAgentPreset = agentPresetFromEnvironment()
@@ -340,6 +378,8 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
     async initialize(params: InitializeRequest): Promise<InitializeResponse> {
       // Single-version agent: the spec's "same version if supported, else
       // the latest supported" both resolve to this server's one version.
+      // The import settles the default route, so image capability mirrors it.
+      await awaitProviderRoutes()
       const initial = initialSelection()
       imagePromptEnabled = await supportsAcpImagePrompts(ctx, initial?.provider, initial?.model)
       clientElicitationSupport = params.clientCapabilities?.elicitation?.form != null
@@ -392,8 +432,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
           additionalDirectories,
           agentPreset,
           workspacePrompt: spec.features.additionalDirectoriesPrompt,
-          agentOptions: agentOptions(spec),
-          fallbackSelection: initialSelection(),
+          agentOptions: sessionAgentOptions(),
           signal,
           notify,
         })
@@ -494,8 +533,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
             mcpServers: params.mcpServers ?? [],
             additionalDirectories,
             workspacePrompt: spec.features.additionalDirectoriesPrompt,
-            agentOptions: agentOptions(spec),
-            fallbackSelection: initialSelection(),
+            agentOptions: sessionAgentOptions(),
             signal,
             notify,
           })
@@ -564,8 +602,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
             mcpServers: params.mcpServers ?? [],
             additionalDirectories,
             workspacePrompt: spec.features.additionalDirectoriesPrompt,
-            agentOptions: agentOptions(spec),
-            fallbackSelection: initialSelection(),
+            agentOptions: sessionAgentOptions(),
             signal,
             notify,
           })

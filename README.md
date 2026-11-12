@@ -45,12 +45,14 @@ dsh --profile acp-plus
 - **Steering** — the `_session/steering` extension injects text into a live
   turn at its next step, and hands the text back when the turn already ended.
 - **Default-model fallback** — with no provider/model in its own config, the
-  bridge follows the composition's `agent-default-model` (the same default the
-  dsh Web Models page writes).
+  bridge follows the `agent-default-model` imported from its provider-import
+  source profile (the same default the dsh Web Models page writes), then this
+  composition's own `agent-default-model`.
 - **Desktop provider routes** — import the `llm-pi-ai` providers from the
   desktop profile at startup, so third-party models configured in the desktop
   Models page appear as grouped choices in the ACP model picker instead of only
-  offering the DeepSeek route.
+  offering the DeepSeek route. The same import reads that profile's
+  `agent-default-model` row, so the ACP default route follows it.
 - **Skills as slash commands** — user-invocable skills are published in the
   client's `/` command list under `/skills:<name>`, keeping them distinct from
   agent commands. Selecting one sends the prefixed name; the bridge injects the
@@ -102,7 +104,7 @@ paths, and `off` injects nothing.
 - Node.js >= 22
 - DeepSeek Harness (`dsh`) with a model route configured. The plugin's
   `@deepseek-ai/dsh-*` peers are pinned to the running harness version
-  (`^0.2.1-rc.1`).
+  (`^0.2.2-rc.1`).
 
 ## Install
 
@@ -157,7 +159,7 @@ For a fully self-contained artifact, pack a tarball and install that instead:
 mkdir -p ~/.dsh/profiles/acp-plus/vendor
 npm pack --pack-destination ~/.dsh/profiles/acp-plus/vendor
 dsh plugin --profile acp-plus remove dsh-acp-plus
-dsh plugin --profile acp-plus add file:./vendor/dsh-acp-plus-0.1.2.tgz
+dsh plugin --profile acp-plus add file:./vendor/dsh-acp-plus-0.1.3.tgz
 ```
 
 To replace the native bridge inside the shipped `acp` profile instead:
@@ -297,10 +299,12 @@ chat after changing it.
 
 ### Models and credentials
 
-`provider` / `model` are optional. When unset, the bridge follows
-`agent-default-model` — the default model service the desktop Models page
-writes — so a deployment configures its model once and every entry point
-follows.
+`provider` / `model` are optional. When unset, the bridge follows the route the
+provider import read from its source profile (`agent-default-model`, written by
+that profile's Models page) and otherwise this composition's own
+`agent-default-model` — so a deployment configures its model once and every
+entry point follows. An explicit `provider` / `model` on the bridge row still
+wins over both.
 
 Provider routes are **composition state**, not session state. A dsh profile
 starts from its own bundle set and its own `cordis.patch.yml`, so a route added
@@ -309,12 +313,13 @@ inherited by `acp-plus`. The bridge can only list routes registered in the
 running profile; it does not invent providers.
 
 The shipped profile therefore mounts `acp-plus-providers`, which reads the
-`llm-pi-ai` block from `$DSH_HOME/profiles/desktop/cordis.patch.yml` at startup
-and applies those routes to the running adapter. The desktop Models page remains
-the source of truth: add or edit providers there, then restart the ACP agent
-(the import runs once per process). Nothing is copied into the ACP profile patch
-and no secret is read by the importer; `apiKeyEnv` still resolves through the
-shared credential store per request.
+`llm-pi-ai` block and the `agent-default-model` row from
+`$DSH_HOME/profiles/desktop/cordis.patch.yml` at startup and applies those
+routes and that default to the running adapter. The desktop Models page remains
+the source of truth: add or edit providers or the default model there, then
+restart the ACP agent (the import runs once per process). Nothing is copied into
+the ACP profile patch and no secret is read by the importer; `apiKeyEnv` still
+resolves through the shared credential store per request.
 
 ```yaml
 - insert:
@@ -327,10 +332,11 @@ shared credential store per request.
 `from` accepts profile names (resolved under
 `$DSH_HOME/profiles/<name>/cordis.patch.yml`), absolute or relative YAML/JSON
 files, or a list of either; later sources override earlier providers with the
-same route id. The shipped row reads `desktop` only. Add `web` (`from: [desktop,
-web]`) only if you configure providers through a standalone `dsh web` profile;
-that profile is a separate composition and does not share the desktop app's
-patch. Inline `providers` on the same row override imported keys.
+same route id, and the last source that configures `agent-default-model`
+supplies the default. The shipped row reads `desktop` only. Point it at `web`
+(`from: [web]`) to follow a standalone `dsh web` profile's models; that profile
+is a separate composition and does not share the desktop app's patch. Inline
+`providers` on the same row override imported keys.
 
 You can also declare routes directly in
 `$DSH_HOME/profiles/acp-plus/cordis.patch.yml` with a normal `llm-pi-ai` block,
@@ -419,7 +425,7 @@ keeps its protocol semantics and extends them:
 - Standard ACP v1 plus the advertised session capabilities and the
   `_session/steering` extension; clients that do not know an extension ignore
   it.
-- All `@deepseek-ai/dsh-*` peers are pinned to `^0.2.1-rc.1` and checked by
+- All `@deepseek-ai/dsh-*` peers are pinned to `^0.2.2-rc.1` and checked by
   dsh's plugin preflight. On a different harness version, grant the
   exact-version exemption the diagnostic describes
   (`dsh plugin allow-version <name>@<version>`).

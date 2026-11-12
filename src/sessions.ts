@@ -20,7 +20,8 @@ import {
   type SessionNotification,
   type StopReason,
 } from '@agentclientprotocol/sdk'
-import type { Agent, AgentHandle, AgentOptions, ModelSelection } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle, AgentOptions } from '@deepseek-ai/dsh-agent'
+import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage, errorChain, type UserMessage } from '@deepseek-ai/dsh-llm'
 // Type-only: declaration-merges the permission knob session events below.
@@ -76,8 +77,6 @@ interface AcpPlusSessionBuildOptions {
   workspacePrompt: WorkspacePromptMode
   /** Per-agent route options from deployment config. */
   agentOptions: AgentOptions
-  /** Deployment provider/model selection, or undefined when a listener supplies it. */
-  fallbackSelection: ModelSelection | undefined
   /** JSON-RPC request cancellation. */
   signal: AbortSignal
   /** Ordered update delivery owned by the bridge. */
@@ -123,25 +122,6 @@ function internalError(detail: string): RequestError {
   return RequestError.internalError(undefined, detail)
 }
 
-/** Restore the latest logged route before falling back to deployment config. */
-function selectionFor(
-  logged: {
-    config: { provider: string; model: string; reasoningEffort?: ModelSelection['reasoningEffort'] }
-    adapterDefaults?: { reasoningEffort?: boolean }
-  } | undefined,
-  fallback: ModelSelection | undefined,
-): ModelSelection | undefined {
-  return logged === undefined
-    ? fallback
-    : {
-      provider: logged.config.provider,
-      model: logged.config.model,
-      ...logged.config.reasoningEffort === undefined || logged.adapterDefaults?.reasoningEffort === true
-        ? {}
-        : { reasoningEffort: logged.config.reasoningEffort },
-    }
-}
-
 /** Parse one committed tool call's model-supplied arguments without failing the bridge. */
 function parseToolArguments(value: string): unknown {
   try {
@@ -172,7 +152,6 @@ export class AcpPlusSession {
   private configOptionsSnapshot = ''
   /** Current slash-command execution, aborted by session cancellation or close. */
   private commandAbort: AbortController | undefined
-  private readonly pendingSelections = new Map<string, ModelSelection>()
   /** Model-supplied arguments of in-flight tool calls, for escalation checks. */
   private readonly toolCalls = new Map<string, { name: string; arguments: unknown }>()
   /** Client-declared additional workspace roots, canonical and deduplicated. */
@@ -204,7 +183,6 @@ export class AcpPlusSession {
    * @returns the fully composed per-session module.
    */
   static async create(ctx: Context, options: CreateAcpPlusSessionOptions): Promise<AcpPlusSession> {
-    const modelControl = new AcpPlusModelControl(ctx.llm, options.fallbackSelection)
     let workspaceRoots: readonly WorkspaceRoot[] = []
     const handle = await ctx.agents.create({
       sessionId: options.sessionId,
@@ -215,7 +193,9 @@ export class AcpPlusSession {
       agentOptions: options.agentOptions,
       signal: options.signal,
       setup: async (agentCtx, agent) => {
-        modelControl.install(agentCtx)
+        // Switch notices are scoped to the Agent; the selection itself is
+        // Agent-owned, so it needs no bridge-side reference.
+        installModelSelection(agentCtx)
         if (options.agentPreset !== undefined) {
           await mountAgentPreset(ctx, agentCtx, options.agentPreset)
         }
@@ -235,7 +215,7 @@ export class AcpPlusSession {
     return new AcpPlusSession(
       ctx,
       handle,
-      modelControl,
+      new AcpPlusModelControl(ctx.llm, handle.agent.model),
       options.additionalDirectories,
       workspaceRoots,
       options.notify,
@@ -249,18 +229,13 @@ export class AcpPlusSession {
    * @returns the restored per-session module.
    */
   static async resume(ctx: Context, options: ResumeAcpPlusSessionOptions): Promise<AcpPlusSession> {
-    let modelControl: AcpPlusModelControl | undefined
     let workspaceRoots: readonly WorkspaceRoot[] = []
     const handle = await ctx.agents.resume({
       resumeSessionId: options.sessionId,
       agentOptions: options.agentOptions,
       signal: options.signal,
       setup: async (agentCtx, agent) => {
-        modelControl = new AcpPlusModelControl(
-          ctx.llm,
-          selectionFor(agent.session.requestHeader(), options.fallbackSelection),
-        )
-        modelControl.install(agentCtx)
+        installModelSelection(agentCtx)
         const persistedPreset = agent.session.header.agentPreset
         if (persistedPreset !== undefined) {
           await mountAgentPreset(ctx, agentCtx, persistedPreset)
@@ -274,14 +249,13 @@ export class AcpPlusSession {
         await mountAcpMcpServers(agentCtx, options.mcpServers, options.cwd)
       },
     })
-    if (modelControl === undefined) {
-      await handle.dispose()
-      throw internalError('session/resume did not compose model selection')
-    }
+    // The Session's recorded selection wins over these options; deployment
+    // default options only answer a session that recorded neither a selection
+    // nor a request.
     return new AcpPlusSession(
       ctx,
       handle,
-      modelControl,
+      new AcpPlusModelControl(ctx.llm, handle.agent.model),
       options.additionalDirectories,
       workspaceRoots,
       options.notify,
@@ -476,12 +450,10 @@ export class AcpPlusSession {
         })
         inflight.messageId = message.id
         inflight.messageQueued = true
-        if (promptSelection !== undefined) this.pendingSelections.set(message.id, promptSelection)
         try {
           this.agent.followup(message)
         } catch (error: unknown) {
           inflight.messageQueued = false
-          this.pendingSelections.delete(message.id)
           throw error
         }
       } catch (error: unknown) {
@@ -613,7 +585,6 @@ export class AcpPlusSession {
         inflight.endReason = event.data.reason
       }
       if (event.type === 'turn/end') {
-        this.modelControl.releaseTurn(event.data.turn)
         // Every turn has a final measurable envelope, including turns whose
         // assistant message carried no provider usage sample.
         this.publishUsage()
@@ -638,15 +609,12 @@ export class AcpPlusSession {
   }
 
   /**
-   * Correlate an accepted user message with its Agent turn and pinned route.
+   * Correlate an accepted user message with its Agent turn.
    * @param message - claimed durable inbox message.
    * @param turn - allocated Agent turn.
    */
   onInboxClaimed(message: UserMessage, turn: number): void {
     if (this.inflight !== undefined && this.inflight.messageId === message.id) this.inflight.turn = turn
-    const selection = this.pendingSelections.get(message.id)
-    this.pendingSelections.delete(message.id)
-    if (selection !== undefined) this.modelControl.pinTurn(turn, selection)
   }
 
   /**
@@ -732,7 +700,6 @@ export class AcpPlusSession {
       } catch (error: unknown) {
         failures.push(error)
       }
-      this.pendingSelections.clear()
       this.toolCalls.clear()
       if (failures.length === 1) throw failures[0]
       if (failures.length > 1) {

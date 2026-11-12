@@ -11,6 +11,13 @@ import { isAbsolute, join, resolve } from 'node:path'
 /** Provider route profiles keyed by provider id. */
 export type ProviderProfiles = Record<string, unknown>
 
+/** Deployment default route read from another profile's `agent-default-model` row. */
+export interface DefaultSelection {
+  provider: string
+  model: string
+  reasoningEffort?: string
+}
+
 /** Normalize the public `from` field into an ordered source list. */
 export function normalizeSources(from: string | string[] | undefined): string[] {
   if (from === undefined) return []
@@ -53,4 +60,38 @@ export function extractProviderProfiles(document: unknown): ProviderProfiles {
 /** Whether a value is a plain object. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Extract the `agent-default-model` route from a profile patch list, a
+ * `settings.yaml` section, or a bare `agent-default-model` config object.
+ * The Web Models page writes this row, so importing it keeps the ACP default
+ * on the same route as the web profile instead of the base composition.
+ */
+export function extractDefaultSelection(document: unknown): DefaultSelection | undefined {
+  if (Array.isArray(document)) {
+    for (const row of document) {
+      if (!isRecord(row)) continue
+      if (row.id !== 'agent-default-model' && row.name !== '@deepseek-ai/dsh-agent-default-model') continue
+      return defaultSelectionFrom(isRecord(row.config) ? row.config : undefined)
+    }
+    return undefined
+  }
+  if (!isRecord(document)) return undefined
+  const section = document['agent-default-model']
+  if (!isRecord(section)) return undefined
+  return defaultSelectionFrom(isRecord(section.config) ? section.config : section)
+}
+
+/** Read one complete route; a partial or malformed row supplies nothing. */
+function defaultSelectionFrom(config: Record<string, unknown> | undefined): DefaultSelection | undefined {
+  if (config === undefined) return undefined
+  const { provider, model, reasoningEffort } = config
+  if (typeof provider !== 'string' || provider.length === 0) return undefined
+  if (typeof model !== 'string' || model.length === 0) return undefined
+  return {
+    provider,
+    model,
+    ...typeof reasoningEffort !== 'string' || reasoningEffort.length === 0 ? {} : { reasoningEffort },
+  }
 }
