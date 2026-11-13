@@ -58,3 +58,7 @@
         enableSessionLoad: true
         enableAdditionalDirectories: true
         additionalDirectoriesPrompt: routing
+        # Set false when the Web profile runs a session adopter
+        # (dsh-session-adopt): the Workspace store is single-writer, so two
+        # attaching processes overwrite each other.
+        workspaceAttach: true

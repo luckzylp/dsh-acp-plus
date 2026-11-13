@@ -212,6 +212,7 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
 
   /** Attach one session to the workspace for its cwd; never fails the request. */
   const attachToWorkspace = async (session: Session, cwd: string): Promise<void> => {
+    if (!spec.features.workspaceAttach) return
     const registry = workspaceRegistry
     if (registry === undefined) return
     try {
@@ -240,8 +241,12 @@ export function apply(ctx: Context, config: AcpPlusConfig): void {
    * that arrives first is queued for the injection above instead of blocking
    * the request. Grouping is cosmetic: a deployment without the registry, or a
    * registration that rejects, is logged and never fails the ACP request.
+   * `features.workspaceAttach` turns this off for deployments where a
+   * Web-side adopter owns grouping; the shared Workspace store is a
+   * single-writer JSON unit, so two attaching processes overwrite each other.
    */
   const attachWorkspace = async (session: Session, cwd: string): Promise<void> => {
+    if (!spec.features.workspaceAttach) return
     if (workspaceRegistry === undefined) {
       pendingWorkspaceAttachments.push({ session, cwd })
       return

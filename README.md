@@ -226,6 +226,7 @@ The profile patch configures the bridge row:
 | `enableSessionLoad` | boolean | `false` | Advertise and serve `session/load` transcript replay. |
 | `enableAdditionalDirectories` | boolean | `false` | Accept `additionalDirectories` with containment-checked pre-approval. |
 | `additionalDirectoriesPrompt` | `routing` / `map` / `off` | `routing` | `routing` lists roots and expands `@alias/` paths; `map` lists roots only (absolute paths); `off` injects nothing. |
+| `workspaceAttach` | boolean | `true` | Attach each ACP session to the Workspace owning its cwd. Set `false` when the Web profile runs `dsh-session-adopt` (recommended). |
 
 The bridge also reads one environment variable:
 
@@ -241,6 +242,69 @@ The shipped profile enables both `enableSessionLoad` and
 `edit` still goes through the containment-checked escalation described above.
 Use `map` when you want the root map without any tool-layer path rewriting, or
 `off` to leave the session's prompt and tools untouched.
+
+`workspaceAttach` exists because DSH's Workspace registry is a single-writer
+JSON unit: the Web host keeps the authoritative in-memory registry, so an ACP
+process that attaches a session cannot notify it, and the next Web-side write
+republishes a snapshot without that session. The supported arrangement is to
+let the **Web profile** own grouping and set `workspaceAttach: false` on the
+ACP side.
+
+### Workspace grouping with the Web profile
+
+1. Install the adopter as a dependency of the **web** profile:
+
+   ```sh
+   dsh plugin --profile web add https://github.com/FrozMN/dsh-session-adopt
+   ```
+
+   Then enable the `dsh-session-adopt` bundle (the Plugins page offers it after
+   the package is added). The Web profile ends up with the dependency and the
+   bundle selection, for example:
+
+   ```json
+   {
+     "dsh": {
+       "profile": {
+         "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-session-adopt"]
+       }
+     },
+     "dependencies": { "dsh-session-adopt": "github:FrozMN/dsh-session-adopt" }
+   }
+   ```
+
+   The adopter scans durable sessions in the Web process, matches each header's
+   canonical `cwd` to a Workspace, and attaches it there, so the sidebar
+   updates without restarting the Host. It also adds a **Sync sessions** action
+   to the sidebar footer.
+
+2. Set `workspaceAttach: false` in the **acp-plus** profile patch. A patch
+   replaces the whole `config` of the target row, so restate every key:
+
+   ```yaml
+   # ~/.dsh/profiles/acp-plus/cordis.patch.yml
+   - id: acp-plus
+     config:
+       sessionListPageSize: 100
+       enableSessionLoad: true
+       enableAdditionalDirectories: true
+       additionalDirectoriesPrompt: routing
+       workspaceAttach: false
+   ```
+
+3. Reload the Web page once (to load the adopter's client module and its
+   **Sync sessions** action), and restart the ACP client so it spawns a bridge
+   with the new config. New ACP sessions are then adopted by the Web process;
+   click **Sync sessions** for sessions that already exist.
+
+Adopter behavior worth knowing:
+
+- Matching is an exact canonical `cwd` match, not a parent-directory match.
+- A manual sync (the button) may create a missing Workspace for older
+  sessions; startup and periodic scans only attach to Workspaces that already
+  exist.
+- Without an adopter (a standalone ACP deployment with no Web host), keep
+  `workspaceAttach: true`; the bridge then groups sessions itself.
 
 Inspect the composed configuration and its schema:
 
@@ -326,7 +390,7 @@ resolves through the shared credential store per request.
     - id: acp-plus-providers
       name: 'dsh-acp-plus/providers'
       config:
-        from: [desktop]
+        from: [web]
 ```
 
 `from` accepts profile names (resolved under

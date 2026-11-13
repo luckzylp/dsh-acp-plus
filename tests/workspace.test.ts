@@ -27,6 +27,27 @@ test('attaches a new session to the workspace owning its cwd', async () => {
   }
 })
 
+test('leaves the session ungrouped when workspaceAttach is disabled', async () => {
+  const harness = await makeBridgeHarness({
+    workspaces: true,
+    config: { workspaceAttach: false },
+  })
+  try {
+    await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const { sessionId } = await harness.client.newSession({ cwd: process.cwd(), mcpServers: [] })
+
+    const registry = harness.ctx.get('workspaceRegistry')
+    assert.ok(registry !== undefined, 'workspace registry is mounted')
+    assert.equal(
+      registry.list().some(workspace => workspace.sessionIds.some(id => id === sessionId)),
+      false,
+      'the disabled bridge never writes workspace membership',
+    )
+  } finally {
+    await harness.dispose()
+  }
+})
+
 test('creates a session when the deployment has no workspace registry', async () => {
   const harness = await makeBridgeHarness()
   try {

@@ -37,6 +37,14 @@ export interface AcpPlusConfig {
    * path handling to absolute paths; `off` injects nothing.
    */
   additionalDirectoriesPrompt?: 'routing' | 'map' | 'off'
+  /**
+   * Attach each ACP session to the Workspace owning its cwd, so grouped
+   * surfaces list it under the project. Disable this when a Web-side adopter
+   * (for example `dsh-session-adopt`) owns grouping: the Workspace store is
+   * single-writer, so two processes that attach sessions overwrite each
+   * other's registrations.
+   */
+  workspaceAttach?: boolean
 }
 
 /** Schemastery schema validating the fields above. */
@@ -51,6 +59,8 @@ export const Config: Schema<AcpPlusConfig> = Schema.object({
     .description('Accept additionalDirectories; verified single-target writes under a declared root are pre-approved.'),
   additionalDirectoriesPrompt: Schema.union(['routing', 'map', 'off'] as const).default('routing')
     .description('Describe declared roots in the system prompt: routing adds @alias/ path routing, map lists roots only, off injects nothing.'),
+  workspaceAttach: Schema.boolean().default(true)
+    .description('Attach ACP sessions to the Workspace owning their cwd. Disable when a Web-side adopter owns grouping.'),
 })
 
 /** Resolved configuration consumed by the bridge. */
@@ -70,6 +80,7 @@ export interface AcpPlusSpec {
     sessionLoad: boolean
     additionalDirectories: boolean
     additionalDirectoriesPrompt: 'routing' | 'map' | 'off'
+    workspaceAttach: boolean
   }
 }
 
@@ -92,6 +103,7 @@ export function resolveSpec(config: AcpPlusConfig): AcpPlusSpec {
       sessionLoad: config.enableSessionLoad ?? false,
       additionalDirectories: config.enableAdditionalDirectories ?? false,
       additionalDirectoriesPrompt: config.additionalDirectoriesPrompt ?? 'routing',
+      workspaceAttach: config.workspaceAttach ?? true,
     },
   }
 }

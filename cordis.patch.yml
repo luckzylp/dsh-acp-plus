@@ -86,6 +86,11 @@
         # root map and working @alias/ routing. `map` keeps the map but drops
         # the syntax; `off` injects nothing.
         additionalDirectoriesPrompt: routing
+        # Attach each session to the Workspace owning its cwd. Turn this off
+        # when the Web profile runs a session adopter (dsh-session-adopt):
+        # the Workspace store is single-writer, so both processes attaching
+        # sessions overwrite each other's registrations.
+        workspaceAttach: true
         # Commands and modes (M5) are client-visible additions with no gate;
         # elicitation activates only for clients declaring form support.
         # Client terminals are deliberately unsupported (PLAN D9): DSH always
